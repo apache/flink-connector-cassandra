@@ -47,7 +47,6 @@ import org.apache.flink.table.api.internal.TableEnvironmentInternal;
 import org.apache.flink.testutils.junit.RetryOnException;
 import org.apache.flink.testutils.junit.extensions.retry.RetryExtension;
 import org.apache.flink.types.Row;
-import org.apache.flink.util.DockerImageVersions;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.ConsistencyLevel;
@@ -108,6 +107,7 @@ class CassandraConnectorITCase
                 Tuple3<String, Integer, Integer>,
                 CassandraTupleWriteAheadSink<Tuple3<String, Integer, Integer>>> {
 
+    private static final String CASSANDRA_4_0 = "cassandra:4.0.3";
     private static final int MAX_CONNECTION_RETRY = 3;
     private static final long CONNECTION_RETRY_DELAY = 500L;
 
@@ -268,7 +268,7 @@ class CassandraConnectorITCase
     // ------------------------------------------------------------------------
 
     public static CassandraContainer createCassandraContainer() {
-        CassandraContainer cassandra = new CassandraContainer(DockerImageVersions.CASSANDRA_4_0);
+        CassandraContainer cassandra = new CassandraContainer(CASSANDRA_4_0);
         cassandra.withJmxReporting(false);
         cassandra.withLogConsumer(LOG_CONSUMER);
         return cassandra;
