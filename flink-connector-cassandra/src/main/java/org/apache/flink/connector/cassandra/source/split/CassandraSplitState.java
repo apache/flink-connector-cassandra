@@ -20,7 +20,9 @@ package org.apache.flink.connector.cassandra.source.split;
 
 import java.util.Set;
 
-/** Mutable {@link CassandraSplit} for state management. */
+/**
+ * Mutable {@link CassandraSplit} that keeps track of the reading process of the associated split.
+ */
 public class CassandraSplitState {
     private final Set<RingRange> unprocessedRingRanges;
     private final String splitId;

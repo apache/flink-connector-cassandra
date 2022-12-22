@@ -18,8 +18,6 @@
 
 package org.apache.flink.connector.cassandra.source.split;
 
-import org.apache.flink.shaded.guava30.com.google.common.collect.Sets;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -89,8 +87,8 @@ public final class SplitsGenerator {
     public List<CassandraSplit> generateSplits(long totalSplitCount, List<BigInteger> ringTokens) {
         if (totalSplitCount == 1) {
             RingRange totalRingRange = RingRange.of(rangeMin, rangeMax);
-            // needs to be mutable
-            return Collections.singletonList(new CassandraSplit(Sets.newHashSet(totalRingRange)));
+            return Collections.singletonList(
+                    new CassandraSplit(Collections.singleton(totalRingRange)));
         }
         int tokenRangeCount = ringTokens.size();
 

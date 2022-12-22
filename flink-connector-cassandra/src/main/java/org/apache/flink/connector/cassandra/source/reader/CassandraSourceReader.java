@@ -59,15 +59,11 @@ public class CassandraSourceReader<OUT>
 
     @Override
     protected CassandraSplitState initializedState(CassandraSplit cassandraSplit) {
-        // no need to deep copy the ringRanges as this method is called only by SourceReaderBase,
-        // there will be no serialization involved
-        return new CassandraSplitState(cassandraSplit.getRingRanges(), cassandraSplit.splitId());
+        return cassandraSplit.toSplitState();
     }
 
     @Override
     protected CassandraSplit toSplitType(String splitId, CassandraSplitState splitState) {
-        // no need to deep copy the ringRanges as this method is called only by SourceReaderBase,
-        // there will be no serialization involved
         return new CassandraSplit(splitState.getUnprocessedRingRanges());
     }
 }

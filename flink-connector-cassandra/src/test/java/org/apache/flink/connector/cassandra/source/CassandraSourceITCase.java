@@ -39,7 +39,7 @@ import java.util.List;
 import static java.util.concurrent.CompletableFuture.runAsync;
 import static org.apache.flink.connector.cassandra.source.CassandraTestContext.CassandraTestContextFactory;
 import static org.apache.flink.connector.testframe.utils.ConnectorTestConstants.DEFAULT_COLLECT_DATA_TIMEOUT;
-import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /** Test for the Cassandra source. */
 public class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {

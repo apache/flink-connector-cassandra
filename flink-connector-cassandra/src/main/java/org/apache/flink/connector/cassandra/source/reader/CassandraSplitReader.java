@@ -181,9 +181,7 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
     @Override
     public void handleSplitsChanges(SplitsChange<CassandraSplit> splitsChanges) {
         for (CassandraSplit cassandraSplit : splitsChanges.splits()) {
-            unprocessedSplits.add(
-                    new CassandraSplitState(
-                            cassandraSplit.getRingRanges(), cassandraSplit.splitId()));
+            unprocessedSplits.add(cassandraSplit.toSplitState());
         }
     }
 

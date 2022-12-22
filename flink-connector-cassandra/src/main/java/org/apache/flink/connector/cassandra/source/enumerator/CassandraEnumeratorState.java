@@ -46,7 +46,7 @@ public class CassandraEnumeratorState implements Serializable {
     }
 
     private int getOwnerReader(int numReaders, CassandraSplit split) {
-        // readerId == subTaksId == 0 or 1 if numReaders == 2 so  modulo is fine for ownerReader
+        // readerId == subTakId is between 0 and (numReaders-1)  so  modulo is fine for ownerReader
         final int rawOwnerId = split.splitId().hashCode() % numReaders;
         // split.splitId().hashCode() can be negative
         return Math.abs(rawOwnerId);

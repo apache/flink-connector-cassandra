@@ -18,6 +18,8 @@
 
 package org.apache.flink.connector.cassandra.source.split;
 
+import org.apache.flink.shaded.guava30.com.google.common.collect.ImmutableSet;
+
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
@@ -33,7 +35,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 public final class SplitsGeneratorTest {
 
     @Test
-    public void testGenerateSegments() {
+    public void testGenerateSplits() {
         List<BigInteger> tokens =
                 Stream.of(
                                 "0",
@@ -46,15 +48,15 @@ public final class SplitsGeneratorTest {
                         .collect(Collectors.toList());
 
         SplitsGenerator generator = new SplitsGenerator("foo.bar.RandomPartitioner");
-        List<CassandraSplit> segments = generator.generateSplits(10, tokens);
+        List<CassandraSplit> splits = generator.generateSplits(10, tokens);
 
-        assertThat(segments.size()).isEqualTo(12);
-        assertThat(segments.get(0).getRingRanges().toString())
+        assertThat(splits.size()).isEqualTo(12);
+        assertThat(splits.get(0).splitId())
                 .isEqualTo("[(0,1], (1,14178431955039102644307275309657008811]]");
-        assertThat(segments.get(1).getRingRanges().toString())
+        assertThat(splits.get(1).splitId())
                 .isEqualTo(
                         "[(14178431955039102644307275309657008811,28356863910078205288614550619314017621]]");
-        assertThat(segments.get(5).getRingRanges().toString())
+        assertThat(splits.get(5).splitId())
                 .isEqualTo(
                         "[(70892159775195513221536376548285044053,85070591730234615865843651857942052863]]");
 
@@ -69,15 +71,15 @@ public final class SplitsGeneratorTest {
                         .map(BigInteger::new)
                         .collect(Collectors.toList());
 
-        segments = generator.generateSplits(10, tokens);
+        splits = generator.generateSplits(10, tokens);
 
-        assertThat(segments.size()).isEqualTo(12);
-        assertThat(segments.get(0).getRingRanges().toString())
+        assertThat(splits.size()).isEqualTo(12);
+        assertThat(splits.get(0).splitId())
                 .isEqualTo("[(5,6], (6,14178431955039102644307275309657008815]]");
-        assertThat(segments.get(5).getRingRanges().toString())
+        assertThat(splits.get(5).splitId())
                 .isEqualTo(
                         "[(70892159775195513221536376548285044053,85070591730234615865843651857942052863]]");
-        assertThat(segments.get(10).getRingRanges().toString())
+        assertThat(splits.get(10).splitId())
                 .isEqualTo(
                         "[(141784319550391026443072753096570088109,155962751505430129087380028406227096921]]");
     }
@@ -118,27 +120,41 @@ public final class SplitsGeneratorTest {
         SplitsGenerator generator = new SplitsGenerator("foo.bar.RandomPartitioner");
         List<CassandraSplit> splits = generator.generateSplits(5, tokens);
         assertThat(splits.size()).isEqualTo(6);
-        assertThat(splits.get(1).getRingRanges())
-                .containsExactlyInAnyOrder(
-                        RingRange.of(
-                                new BigInteger("85070591730234615865843651857942052863"),
-                                new BigInteger("113427455640312821154458202477256070484")),
-                        RingRange.of(
-                                new BigInteger("113427455640312821154458202477256070484"),
-                                new BigInteger("113427455640312821154458202477256070485")));
 
-        assertThat(splits.get(2).getRingRanges())
-                .containsExactlyInAnyOrder(
-                        RingRange.of(
-                                new BigInteger("113427455640312821154458202477256070485"),
-                                new BigInteger("141784319550391026443072753096570088109")));
+        assertThat(splits.get(1))
+                .isEqualTo(
+                        new CassandraSplit(
+                                ImmutableSet.of(
+                                        RingRange.of(
+                                                new BigInteger(
+                                                        "85070591730234615865843651857942052863"),
+                                                new BigInteger(
+                                                        "113427455640312821154458202477256070484")),
+                                        RingRange.of(
+                                                new BigInteger(
+                                                        "113427455640312821154458202477256070484"),
+                                                new BigInteger(
+                                                        "113427455640312821154458202477256070485")))));
 
-        assertThat(splits.get(3).getRingRanges())
-                .containsExactlyInAnyOrder(
-                        RingRange.of(
-                                new BigInteger("141784319550391026443072753096570088109"),
-                                new BigInteger("5")),
-                        RingRange.of(new BigInteger("5"), new BigInteger("6")));
+        assertThat(splits.get(2))
+                .isEqualTo(
+                        new CassandraSplit(
+                                ImmutableSet.of(
+                                        RingRange.of(
+                                                new BigInteger(
+                                                        "113427455640312821154458202477256070485"),
+                                                new BigInteger(
+                                                        "141784319550391026443072753096570088109")))));
+
+        assertThat(splits.get(3))
+                .isEqualTo(
+                        new CassandraSplit(
+                                ImmutableSet.of(
+                                        RingRange.of(
+                                                new BigInteger(
+                                                        "141784319550391026443072753096570088109"),
+                                                new BigInteger("5")),
+                                        RingRange.of(new BigInteger("5"), new BigInteger("6")))));
     }
 
     @Test

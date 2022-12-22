@@ -21,13 +21,14 @@ package org.apache.flink.connector.cassandra.source.split;
 import org.apache.flink.api.connector.source.SourceSplit;
 
 import java.io.Serializable;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 
 /**
- * {@link SourceSplit} for Cassandra source. A Cassandra split is just a set of {@link RingRange}s
- * (a range between 2 tokens). Tokens are spread across the Cassandra cluster with each node
- * managing a share of the token ring. Each split can contain several token ranges in order to
+ * Immutable {@link SourceSplit} for Cassandra source. A Cassandra split is just a set of {@link
+ * RingRange}s (a range between 2 tokens). Tokens are spread across the Cassandra cluster with each
+ * node managing a share of the token ring. Each split can contain several token ranges in order to
  * reduce the overhead on Cassandra vnodes.
  */
 public class CassandraSplit implements SourceSplit, Serializable {
@@ -38,13 +39,13 @@ public class CassandraSplit implements SourceSplit, Serializable {
         this.ringRanges = ringRanges;
     }
 
-    public Set<RingRange> getRingRanges() {
-        return ringRanges;
-    }
-
     @Override
     public String splitId() {
         return ringRanges.toString();
+    }
+
+    public CassandraSplitState toSplitState() {
+        return new CassandraSplitState(new HashSet<>(ringRanges), splitId());
     }
 
     @Override
