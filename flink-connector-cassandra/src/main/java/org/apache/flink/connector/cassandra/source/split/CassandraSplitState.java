@@ -18,6 +18,7 @@
 
 package org.apache.flink.connector.cassandra.source.split;
 
+import java.util.HashSet;
 import java.util.Set;
 
 /**
@@ -28,7 +29,7 @@ public class CassandraSplitState {
     private final String splitId;
 
     public CassandraSplitState(Set<RingRange> unprocessedRingRanges, String splitId) {
-        this.unprocessedRingRanges = unprocessedRingRanges;
+        this.unprocessedRingRanges = new HashSet<>(unprocessedRingRanges);
         this.splitId = splitId;
     }
 
