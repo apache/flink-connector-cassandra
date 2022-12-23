@@ -40,48 +40,44 @@ public final class SplitsGeneratorTest {
                 Stream.of(
                                 "0",
                                 "1",
-                                "56713727820156410577229101238628035242",
-                                "56713727820156410577229101238628035243",
-                                "113427455640312821154458202477256070484",
-                                "113427455640312821154458202477256070485")
+                                "567137278201564105",
+                                "567137278201564106",
+                                "897137278201564106",
+                                "897137278201564107")
                         .map(BigInteger::new)
                         .collect(Collectors.toList());
 
-        SplitsGenerator generator = new SplitsGenerator("foo.bar.RandomPartitioner");
+        SplitsGenerator generator = new SplitsGenerator("Murmur3Partitioner");
         List<CassandraSplit> splits = generator.generateSplits(10, tokens);
 
-        assertThat(splits.size()).isEqualTo(12);
+        assertThat(splits.size()).isEqualTo(11);
         assertThat(splits.get(0).splitId())
-                .isEqualTo("[(0,1], (1,14178431955039102644307275309657008811]]");
-        assertThat(splits.get(1).splitId())
                 .isEqualTo(
-                        "[(14178431955039102644307275309657008811,28356863910078205288614550619314017621]]");
+                        "[(567137278201564106,897137278201564106], (0,1], (567137278201564105,567137278201564106], (1,567137278201564105], (897137278201564106,897137278201564107]]");
+        assertThat(splits.get(1).splitId()).isEqualTo("[(897137278201564107,2652097957752362857]]");
         assertThat(splits.get(5).splitId())
-                .isEqualTo(
-                        "[(70892159775195513221536376548285044053,85070591730234615865843651857942052863]]");
+                .isEqualTo("[(7916979996404759110,-8774803397753993755]]");
 
         tokens =
                 Stream.of(
                                 "5",
                                 "6",
-                                "56713727820156410577229101238628035242",
-                                "56713727820156410577229101238628035243",
-                                "113427455640312821154458202477256070484",
-                                "113427455640312821154458202477256070485")
+                                "567137278201564105",
+                                "567137278201564106",
+                                "897137278201564106",
+                                "897137278201564107")
                         .map(BigInteger::new)
                         .collect(Collectors.toList());
 
         splits = generator.generateSplits(10, tokens);
 
-        assertThat(splits.size()).isEqualTo(12);
+        assertThat(splits.size()).isEqualTo(11);
         assertThat(splits.get(0).splitId())
-                .isEqualTo("[(5,6], (6,14178431955039102644307275309657008815]]");
+                .isEqualTo(
+                        "[(567137278201564106,897137278201564106], (5,6], (567137278201564105,567137278201564106], (6,567137278201564105], (897137278201564106,897137278201564107]]");
         assertThat(splits.get(5).splitId())
-                .isEqualTo(
-                        "[(70892159775195513221536376548285044053,85070591730234615865843651857942052863]]");
-        assertThat(splits.get(10).splitId())
-                .isEqualTo(
-                        "[(141784319550391026443072753096570088109,155962751505430129087380028406227096921]]");
+                .isEqualTo("[(7916979996404759112,-8774803397753993752]]");
+        assertThat(splits.get(10).splitId()).isEqualTo("[(-1754960679550798747,5]]");
     }
 
     @Test
@@ -90,15 +86,15 @@ public final class SplitsGeneratorTest {
                 Arrays.asList(
                         "0",
                         "1",
-                        "56713727820156410577229101238628035242",
-                        "56713727820156410577229101238628035242",
-                        "113427455640312821154458202477256070484",
-                        "113427455640312821154458202477256070485");
+                        "567137278201564105",
+                        "567137278201564105",
+                        "897137278201564106",
+                        "897137278201564107");
 
         List<BigInteger> tokens =
                 tokenStrings.stream().map(BigInteger::new).collect(Collectors.toList());
 
-        SplitsGenerator generator = new SplitsGenerator("foo.bar.RandomPartitioner");
+        SplitsGenerator generator = new SplitsGenerator("Murmur3Partitioner");
         assertThatThrownBy(() -> generator.generateSplits(10, tokens))
                 .isInstanceOf(RuntimeException.class);
     }
@@ -107,71 +103,60 @@ public final class SplitsGeneratorTest {
     public void testRotatedRing() {
         List<String> tokenStrings =
                 Arrays.asList(
-                        "56713727820156410577229101238628035243",
-                        "113427455640312821154458202477256070484",
-                        "113427455640312821154458202477256070485",
+                        "567137278201564106",
+                        "897137278201564106",
+                        "897137278201564107",
                         "5",
                         "6",
-                        "56713727820156410577229101238628035242");
+                        "567137278201564105");
 
         List<BigInteger> tokens =
                 tokenStrings.stream().map(BigInteger::new).collect(Collectors.toList());
 
-        SplitsGenerator generator = new SplitsGenerator("foo.bar.RandomPartitioner");
+        SplitsGenerator generator = new SplitsGenerator("Murmur3Partitioner");
         List<CassandraSplit> splits = generator.generateSplits(5, tokens);
-        assertThat(splits.size()).isEqualTo(6);
+        assertThat(splits.size()).isEqualTo(7);
 
         assertThat(splits.get(1))
                 .isEqualTo(
                         new CassandraSplit(
                                 ImmutableSet.of(
                                         RingRange.of(
-                                                new BigInteger(
-                                                        "85070591730234615865843651857942052863"),
-                                                new BigInteger(
-                                                        "113427455640312821154458202477256070484")),
-                                        RingRange.of(
-                                                new BigInteger(
-                                                        "113427455640312821154458202477256070484"),
-                                                new BigInteger(
-                                                        "113427455640312821154458202477256070485")))));
+                                                new BigInteger("897137278201564107"),
+                                                new BigInteger("4407058637303161609")))));
 
         assertThat(splits.get(2))
                 .isEqualTo(
                         new CassandraSplit(
                                 ImmutableSet.of(
                                         RingRange.of(
-                                                new BigInteger(
-                                                        "113427455640312821154458202477256070485"),
-                                                new BigInteger(
-                                                        "141784319550391026443072753096570088109")))));
+                                                new BigInteger("4407058637303161609"),
+                                                new BigInteger("7916979996404759112")))));
 
         assertThat(splits.get(3))
                 .isEqualTo(
                         new CassandraSplit(
                                 ImmutableSet.of(
                                         RingRange.of(
-                                                new BigInteger(
-                                                        "141784319550391026443072753096570088109"),
-                                                new BigInteger("5")),
-                                        RingRange.of(new BigInteger("5"), new BigInteger("6")))));
+                                                new BigInteger("7916979996404759112"),
+                                                new BigInteger("-7019842718203195001")))));
     }
 
     @Test
     public void testDisorderedRing() {
         List<String> tokenStrings =
                 Arrays.asList(
+                        "567137278201564105",
+                        "567137278201564106",
                         "0",
-                        "113427455640312821154458202477256070485",
                         "1",
-                        "56713727820156410577229101238628035242",
-                        "56713727820156410577229101238628035243",
-                        "113427455640312821154458202477256070484");
+                        "897137278201564106",
+                        "897137278201564107");
 
         List<BigInteger> tokens =
                 tokenStrings.stream().map(BigInteger::new).collect(Collectors.toList());
 
-        SplitsGenerator generator = new SplitsGenerator("foo.bar.RandomPartitioner");
+        SplitsGenerator generator = new SplitsGenerator("Murmur3Partitioner");
         // Will throw an exception when concluding that the repair segments don't add up.
         // This is because the tokens were supplied out of order.
         assertThatThrownBy(() -> generator.generateSplits(10, tokens))
