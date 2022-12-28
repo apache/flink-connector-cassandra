@@ -15,12 +15,13 @@
  * limitations under the License.
  */
 
-package org.apache.flink.batch.connectors.cassandra.example;
+package org.apache.flink.connectors.cassandra.utils;
 
 import com.datastax.driver.mapping.annotations.Column;
 import com.datastax.driver.mapping.annotations.Table;
 
 import java.io.Serializable;
+import java.util.Objects;
 
 /** Test Pojo with DataStax annotations used. */
 @Table(keyspace = "flink", name = "batches")
@@ -68,5 +69,28 @@ public class Pojo implements Serializable {
 
     public void setBatchID(int batchId) {
         this.batchID = batchId;
+    }
+
+    @Override
+    public String toString() {
+        return String.format(
+                "{\"id\":\"%s\", \"counter\":%d, \"batchID\":%d}", id, counter, batchID);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        Pojo pojo = (Pojo) o;
+        return counter == pojo.counter && batchID == pojo.batchID && id.equals(pojo.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id, counter, batchID);
     }
 }
