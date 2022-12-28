@@ -21,6 +21,7 @@ package org.apache.flink.connector.cassandra.source.split;
 import org.apache.flink.api.connector.source.SourceSplit;
 
 import java.io.Serializable;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 
@@ -44,7 +45,7 @@ public class CassandraSplit implements SourceSplit, Serializable {
     }
 
     public CassandraSplitState toSplitState() {
-        return new CassandraSplitState(ringRanges, splitId());
+        return new CassandraSplitState(new HashSet<>(ringRanges), splitId());
     }
 
     @Override
