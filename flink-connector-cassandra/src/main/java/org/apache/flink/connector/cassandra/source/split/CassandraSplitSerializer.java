@@ -45,7 +45,7 @@ public class CassandraSplitSerializer implements SimpleVersionedSerializer<Cassa
         try (ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
                 ObjectOutputStream objectOutputStream =
                         new ObjectOutputStream(byteArrayOutputStream)) {
-            objectOutputStream.writeObject(cassandraSplit);
+            cassandraSplit.serialize(objectOutputStream);
             objectOutputStream.flush();
             return byteArrayOutputStream.toByteArray();
         }
@@ -55,9 +55,7 @@ public class CassandraSplitSerializer implements SimpleVersionedSerializer<Cassa
     public CassandraSplit deserialize(int version, byte[] serialized) throws IOException {
         try (ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(serialized);
                 ObjectInputStream objectInputStream = new ObjectInputStream(byteArrayInputStream)) {
-            return (CassandraSplit) objectInputStream.readObject();
-        } catch (ClassNotFoundException e) {
-            throw new IOException(e);
+            return CassandraSplit.deserialize(objectInputStream);
         }
     }
 }

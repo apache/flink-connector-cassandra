@@ -43,11 +43,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static org.apache.flink.connector.cassandra.source.split.SplitsGenerator.CassandraPartitioner.MURMUR3PARTITIONER;
+import static org.apache.flink.connector.cassandra.source.split.SplitsGenerator.CassandraPartitioner.RANDOMPARTITIONER;
+
 /** {@link SplitEnumerator} that splits Cassandra cluster into {@link CassandraSplit}s. */
 public final class CassandraSplitEnumerator
         implements SplitEnumerator<CassandraSplit, CassandraEnumeratorState> {
     private static final Logger LOG = LoggerFactory.getLogger(CassandraSplitEnumerator.class);
-    private static final String MURMUR3PARTITIONER = "org.apache.cassandra.dht.Murmur3Partitioner";
 
     private final SplitEnumeratorContext<CassandraSplit> enumeratorContext;
     private final CassandraEnumeratorState state;
@@ -82,9 +84,13 @@ public final class CassandraSplitEnumerator
     private List<CassandraSplit> discoverSplits() {
         final int numberOfSplits = enumeratorContext.currentParallelism();
         final Metadata clusterMetadata = cluster.getMetadata();
-        final String partitioner = clusterMetadata.getPartitioner();
+        final String partitionerName = clusterMetadata.getPartitioner();
+        final SplitsGenerator.CassandraPartitioner partitioner =
+                partitionerName.contains(MURMUR3PARTITIONER.className())
+                        ? MURMUR3PARTITIONER
+                        : RANDOMPARTITIONER;
         final SplitsGenerator splitsGenerator = new SplitsGenerator(partitioner);
-        if (MURMUR3PARTITIONER.equals(partitioner)) {
+        if (partitioner == MURMUR3PARTITIONER) {
             LOG.info("Murmur3Partitioner detected, splitting");
             List<BigInteger> tokens =
                     clusterMetadata.getTokenRanges().stream()
@@ -100,7 +106,7 @@ public final class CassandraSplitEnumerator
             // https://docs.datastax.com/en/cassandra-oss/3.x/cassandra/architecture/archPartitionerAbout.html
             LOG.warn(
                     "The current Cassandra partitioner is {}, only Murmur3Partitioner is supported "
-                            + "for splitting, using an single split",
+                            + "for splitting, using a single split",
                     partitioner);
             return splitsGenerator.generateSplits(1, Collections.emptyList());
         }

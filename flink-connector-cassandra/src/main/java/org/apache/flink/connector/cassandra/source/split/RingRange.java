@@ -55,9 +55,7 @@ public final class RingRange implements Serializable {
      * @return size of the range, max - range, in case of wrap
      */
     BigInteger span(BigInteger ringSize) {
-        return (start.compareTo(end) >= 0)
-                ? end.subtract(start).add(ringSize)
-                : end.subtract(start);
+        return isWrapping() ? end.subtract(start).add(ringSize) : end.subtract(start);
     }
 
     /** @return true if the ringRange overlaps. Note that if start == end, then wrapping is true */
@@ -81,18 +79,14 @@ public final class RingRange implements Serializable {
 
         RingRange ringRange = (RingRange) o;
 
-        if (getStart() != null
-                ? !getStart().equals(ringRange.getStart())
-                : ringRange.getStart() != null) {
+        if (!getStart().equals(ringRange.getStart())) {
             return false;
         }
-        return getEnd() != null ? getEnd().equals(ringRange.getEnd()) : ringRange.getEnd() == null;
+        return getEnd().equals(ringRange.getEnd());
     }
 
     @Override
     public int hashCode() {
-        int result = getStart() != null ? getStart().hashCode() : 0;
-        result = 31 * result + (getEnd() != null ? getEnd().hashCode() : 0);
-        return result;
+        return 31 * getStart().hashCode() + getEnd().hashCode();
     }
 }

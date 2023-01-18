@@ -20,9 +20,9 @@ package org.apache.flink.connector.cassandra.source.enumerator;
 
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.HashMap;
@@ -33,10 +33,16 @@ import java.util.Set;
 
 /** Sate for {@link CassandraSplitEnumerator} to track the splits yet to assign. */
 public class CassandraEnumeratorState implements Serializable {
-    private static final Logger LOG = LoggerFactory.getLogger(CassandraEnumeratorState.class);
-
     // map readerId to splits
-    private final Map<Integer, Set<CassandraSplit>> unassignedSplits = new HashMap<>();
+    private final Map<Integer, Set<CassandraSplit>> unassignedSplits;
+
+    public CassandraEnumeratorState() {
+        this.unassignedSplits = new HashMap<>();
+    }
+
+    public CassandraEnumeratorState(Map<Integer, Set<CassandraSplit>> unassignedSplits) {
+        this.unassignedSplits = unassignedSplits;
+    }
 
     public void addNewSplits(Collection<CassandraSplit> newSplits, int numReaders) {
         for (CassandraSplit split : newSplits) {
@@ -54,6 +60,35 @@ public class CassandraEnumeratorState implements Serializable {
 
     public Set<CassandraSplit> getSplitsForReader(int readerId) {
         return unassignedSplits.remove(readerId);
+    }
+
+    public void serialize(ObjectOutputStream objectOutputStream) throws IOException {
+        objectOutputStream.writeInt(unassignedSplits.size());
+        for (Map.Entry<Integer, Set<CassandraSplit>> entry : unassignedSplits.entrySet()) {
+            objectOutputStream.writeInt(entry.getKey());
+            final Set<CassandraSplit> splits = entry.getValue();
+            objectOutputStream.writeInt(splits.size());
+            for (CassandraSplit cassandraSplit : splits) {
+                cassandraSplit.serialize(objectOutputStream);
+            }
+        }
+    }
+
+    public static CassandraEnumeratorState deserialize(ObjectInputStream objectInputStream)
+            throws IOException {
+        final int unassignedSplitsSize = objectInputStream.readInt();
+        Map<Integer, Set<CassandraSplit>> unassignedSplits = new HashMap<>(unassignedSplitsSize);
+        for (int i = 0; i < unassignedSplitsSize; i++) {
+            final int key = objectInputStream.readInt();
+            final int splitsSize = objectInputStream.readInt();
+            Set<CassandraSplit> splits = new HashSet<>(splitsSize);
+            for (int j = 0; j < splitsSize; j++) {
+                final CassandraSplit split = CassandraSplit.deserialize(objectInputStream);
+                splits.add(split);
+            }
+            unassignedSplits.put(key, splits);
+        }
+        return new CassandraEnumeratorState(unassignedSplits);
     }
 
     @Override

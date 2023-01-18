@@ -20,13 +20,17 @@ package org.apache.flink.connector.cassandra.source.split;
 
 import org.apache.flink.api.connector.source.SourceSplit;
 
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.math.BigInteger;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 
 /**
- * Immutable {@link SourceSplit} for Cassandra source. A Cassandra split is just a set of {@link
+ * Immutable {@link SourceSplit} for Cassandra source. A Cassandra split is a set of {@link
  * RingRange}s (a range between 2 tokens). Tokens are spread across the Cassandra cluster with each
  * node managing a share of the token ring. Each split can contain several token ranges in order to
  * reduce the overhead on Cassandra vnodes.
@@ -46,6 +50,30 @@ public class CassandraSplit implements SourceSplit, Serializable {
 
     public CassandraSplitState toSplitState() {
         return new CassandraSplitState(new HashSet<>(ringRanges), splitId());
+    }
+
+    public void serialize(ObjectOutputStream objectOutputStream) throws IOException {
+        objectOutputStream.writeInt(ringRanges.size());
+        for (RingRange ringRange : ringRanges) {
+            objectOutputStream.writeObject(ringRange.getStart());
+            objectOutputStream.writeObject(ringRange.getEnd());
+        }
+    }
+
+    public static CassandraSplit deserialize(ObjectInputStream objectInputStream)
+            throws IOException {
+        try {
+            final int nbRingRanges = objectInputStream.readInt();
+            Set<RingRange> ringRanges = new HashSet<>(nbRingRanges);
+            for (int i = 0; i < nbRingRanges; i++) {
+                final BigInteger start = (BigInteger) objectInputStream.readObject();
+                final BigInteger end = (BigInteger) objectInputStream.readObject();
+                ringRanges.add(RingRange.of(start, end));
+            }
+            return new CassandraSplit(ringRanges);
+        } catch (Exception e) {
+            throw new IOException(e);
+        }
     }
 
     @Override

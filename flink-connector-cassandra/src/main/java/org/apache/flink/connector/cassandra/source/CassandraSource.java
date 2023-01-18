@@ -82,7 +82,7 @@ public class CassandraSource<OUT>
 
     public static final String CQL_PROHIBITTED_CLAUSES_REGEXP =
             "(?i).*(AVG|COUNT|MIN|MAX|SUM|ORDER|GROUP BY).*";
-    private static final long serialVersionUID = 7773196541275567433L;
+    private static final long serialVersionUID = 1L;
 
     private final ClusterBuilder clusterBuilder;
     private final Class<OUT> pojoClass;

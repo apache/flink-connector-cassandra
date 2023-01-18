@@ -47,7 +47,7 @@ public class CassandraEnumeratorStateSerializer
         try (ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
                 ObjectOutputStream objectOutputStream =
                         new ObjectOutputStream(byteArrayOutputStream)) {
-            objectOutputStream.writeObject(cassandraEnumeratorState);
+            cassandraEnumeratorState.serialize(objectOutputStream);
             objectOutputStream.flush();
             return byteArrayOutputStream.toByteArray();
         }
@@ -57,9 +57,7 @@ public class CassandraEnumeratorStateSerializer
     public CassandraEnumeratorState deserialize(int version, byte[] serialized) throws IOException {
         try (ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(serialized);
                 ObjectInputStream objectInputStream = new ObjectInputStream(byteArrayInputStream)) {
-            return (CassandraEnumeratorState) objectInputStream.readObject();
-        } catch (ClassNotFoundException e) {
-            throw new IOException(e);
+            return CassandraEnumeratorState.deserialize(objectInputStream);
         }
     }
 }

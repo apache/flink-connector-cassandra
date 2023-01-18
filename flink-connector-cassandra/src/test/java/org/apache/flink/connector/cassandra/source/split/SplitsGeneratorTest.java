@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static org.apache.flink.connector.cassandra.source.split.SplitsGenerator.CassandraPartitioner.MURMUR3PARTITIONER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -47,7 +48,7 @@ public final class SplitsGeneratorTest {
                         .map(BigInteger::new)
                         .collect(Collectors.toList());
 
-        SplitsGenerator generator = new SplitsGenerator("Murmur3Partitioner");
+        SplitsGenerator generator = new SplitsGenerator(MURMUR3PARTITIONER);
         List<CassandraSplit> splits = generator.generateSplits(10, tokens);
 
         assertThat(splits.size()).isEqualTo(11);
@@ -94,7 +95,7 @@ public final class SplitsGeneratorTest {
         List<BigInteger> tokens =
                 tokenStrings.stream().map(BigInteger::new).collect(Collectors.toList());
 
-        SplitsGenerator generator = new SplitsGenerator("Murmur3Partitioner");
+        SplitsGenerator generator = new SplitsGenerator(MURMUR3PARTITIONER);
         assertThatThrownBy(() -> generator.generateSplits(10, tokens))
                 .isInstanceOf(RuntimeException.class);
     }
@@ -113,7 +114,7 @@ public final class SplitsGeneratorTest {
         List<BigInteger> tokens =
                 tokenStrings.stream().map(BigInteger::new).collect(Collectors.toList());
 
-        SplitsGenerator generator = new SplitsGenerator("Murmur3Partitioner");
+        SplitsGenerator generator = new SplitsGenerator(MURMUR3PARTITIONER);
         List<CassandraSplit> splits = generator.generateSplits(5, tokens);
         assertThat(splits.size()).isEqualTo(7);
 
@@ -156,7 +157,7 @@ public final class SplitsGeneratorTest {
         List<BigInteger> tokens =
                 tokenStrings.stream().map(BigInteger::new).collect(Collectors.toList());
 
-        SplitsGenerator generator = new SplitsGenerator("Murmur3Partitioner");
+        SplitsGenerator generator = new SplitsGenerator(MURMUR3PARTITIONER);
         // Will throw an exception when concluding that the repair segments don't add up.
         // This is because the tokens were supplied out of order.
         assertThatThrownBy(() -> generator.generateSplits(10, tokens))

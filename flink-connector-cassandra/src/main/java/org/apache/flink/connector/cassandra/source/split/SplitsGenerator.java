@@ -34,42 +34,10 @@ import java.util.List;
 public final class SplitsGenerator {
     private static final Logger LOG = LoggerFactory.getLogger(SplitsGenerator.class);
 
-    private final String partitioner;
-    private final BigInteger rangeMin;
-    private final BigInteger rangeMax;
-    private final BigInteger rangeSize;
+    private final CassandraPartitioner partitioner;
 
-    public SplitsGenerator(String partitioner) {
+    public SplitsGenerator(CassandraPartitioner partitioner) {
         this.partitioner = partitioner;
-        rangeMin = getRangeMin();
-        rangeMax = getRangeMax();
-        rangeSize = getRangeSize();
-    }
-
-    private BigInteger getRangeMin() {
-        if (partitioner.endsWith("RandomPartitioner")) {
-            return BigInteger.ZERO;
-        } else if (partitioner.endsWith("Murmur3Partitioner")) {
-            return BigInteger.valueOf(2).pow(63).negate();
-        } else {
-            throw new UnsupportedOperationException(
-                    "Unsupported partitioner. " + "Only Random and Murmur3 are supported");
-        }
-    }
-
-    private BigInteger getRangeMax() {
-        if (partitioner.endsWith("RandomPartitioner")) {
-            return BigInteger.valueOf(2).pow(127).subtract(BigInteger.ONE);
-        } else if (partitioner.endsWith("Murmur3Partitioner")) {
-            return BigInteger.valueOf(2).pow(63).subtract(BigInteger.ONE);
-        } else {
-            throw new UnsupportedOperationException(
-                    "Unsupported partitioner. " + "Only Random and Murmur3 are supported");
-        }
-    }
-
-    private BigInteger getRangeSize() {
-        return rangeMax.subtract(rangeMin).add(BigInteger.ONE);
     }
 
     /**
@@ -86,7 +54,7 @@ public final class SplitsGenerator {
      */
     public List<CassandraSplit> generateSplits(long totalSplitCount, List<BigInteger> ringTokens) {
         if (totalSplitCount == 1) {
-            RingRange totalRingRange = RingRange.of(rangeMin, rangeMax);
+            RingRange totalRingRange = RingRange.of(partitioner.min(), partitioner.max());
             return Collections.singletonList(
                     new CassandraSplit(Collections.singleton(totalRingRange)));
         }
@@ -111,7 +79,7 @@ public final class SplitsGenerator {
             BigInteger rangeSize = stop.subtract(start);
             if (rangeSize.compareTo(BigInteger.ZERO) <= 0) {
                 // wrap around case
-                rangeSize = rangeSize.add(this.rangeSize);
+                rangeSize = rangeSize.add(partitioner.ringSize());
             }
 
             // the below, in essence, does this:
@@ -119,7 +87,7 @@ public final class SplitsGenerator {
             BigInteger[] splitCountAndRemainder =
                     rangeSize
                             .multiply(BigInteger.valueOf(totalSplitCount))
-                            .divideAndRemainder(this.rangeSize);
+                            .divideAndRemainder(partitioner.ringSize());
 
             int splitCount =
                     splitCountAndRemainder[0].intValue()
@@ -136,8 +104,8 @@ public final class SplitsGenerator {
                                 .multiply(BigInteger.valueOf(j))
                                 .divide(BigInteger.valueOf(splitCount));
                 BigInteger token = start.add(offset);
-                if (token.compareTo(rangeMax) > 0) {
-                    token = token.subtract(this.rangeSize);
+                if (token.compareTo(partitioner.max()) > 0) {
+                    token = token.subtract(partitioner.ringSize());
                 }
                 // Long.MIN_VALUE is not a valid token and has to be silently incremented.
                 // See https://issues.apache.org/jira/browse/CASSANDRA-14684
@@ -160,10 +128,10 @@ public final class SplitsGenerator {
 
         BigInteger total = BigInteger.ZERO;
         for (RingRange split : ringRanges) {
-            BigInteger size = split.span(rangeSize);
+            BigInteger size = split.span(partitioner.ringSize());
             total = total.add(size);
         }
-        if (!total.equals(rangeSize)) {
+        if (!total.equals(partitioner.ringSize())) {
             throw new RuntimeException(
                     "Some tokens are missing from the splits. This should not happen.");
         }
@@ -171,7 +139,7 @@ public final class SplitsGenerator {
     }
 
     private boolean isNotInRange(BigInteger token) {
-        return token.compareTo(rangeMin) < 0 || token.compareTo(rangeMax) > 0;
+        return token.compareTo(partitioner.min()) < 0 || token.compareTo(partitioner.max()) > 0;
     }
 
     private List<CassandraSplit> coalesceRingRanges(
@@ -181,7 +149,8 @@ public final class SplitsGenerator {
         BigInteger tokenCount = BigInteger.ZERO;
 
         for (RingRange tokenRange : ringRanges) {
-            if (tokenRange.span(rangeSize).add(tokenCount).compareTo(targetSplitSize) > 0
+            if (tokenRange.span(partitioner.ringSize()).add(tokenCount).compareTo(targetSplitSize)
+                            > 0
                     && !tokenRangesForCurrentSplit.isEmpty()) {
                 // enough tokens in that segment
                 LOG.debug(
@@ -193,7 +162,7 @@ public final class SplitsGenerator {
                 tokenCount = BigInteger.ZERO;
             }
 
-            tokenCount = tokenCount.add(tokenRange.span(rangeSize));
+            tokenCount = tokenCount.add(tokenRange.span(partitioner.ringSize()));
             tokenRangesForCurrentSplit.add(tokenRange);
         }
 
@@ -204,6 +173,46 @@ public final class SplitsGenerator {
     }
 
     private BigInteger getTargetSplitSize(long splitCount) {
-        return rangeMax.subtract(rangeMin).divide(BigInteger.valueOf(splitCount));
+        return partitioner.max().subtract(partitioner.min()).divide(BigInteger.valueOf(splitCount));
+    }
+
+    /** enum to configure the SplitGenerator based on Apache Cassandra partitioners. */
+    public enum CassandraPartitioner {
+        MURMUR3PARTITIONER(
+                "Murmur3Partitioner",
+                BigInteger.valueOf(2).pow(63).negate(),
+                BigInteger.valueOf(2).pow(63).subtract(BigInteger.ONE)),
+        RANDOMPARTITIONER(
+                "RandomPartitioner",
+                BigInteger.ZERO,
+                BigInteger.valueOf(2).pow(127).subtract(BigInteger.ONE));
+
+        private final BigInteger min;
+        private final BigInteger max;
+        private final BigInteger ringSize;
+        private final String className;
+
+        CassandraPartitioner(String className, BigInteger min, BigInteger max) {
+            this.className = className;
+            this.min = min;
+            this.max = max;
+            this.ringSize = max.subtract(min).add(BigInteger.ONE);
+        }
+
+        public BigInteger min() {
+            return min;
+        }
+
+        public BigInteger max() {
+            return max;
+        }
+
+        public BigInteger ringSize() {
+            return ringSize;
+        }
+
+        public String className() {
+            return className;
+        }
     }
 }
