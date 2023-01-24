@@ -207,6 +207,34 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
                 " WHERE (token(%s) >= ?) AND (token(%s) < ?)");
     }
 
+    /**
+     * Utility method to add the provided filtering clause to the user select query. It is used to
+     * add the ring token filtering clauses to generate the split query. For example
+     *
+     * <ul>
+     *   <li>When generating a range query (see {@link #generateRangeQuery}) <code>"select * from
+     *       keyspace.table where field1=value1;"</code> will be transformed into <code>"select * from
+     *       keyspace.table where (token(partitionKey) >= ?) AND (token(partitionKey) < ?) AND
+     *       field1=value1;"</code>
+     *   <li>When generating a range query (see {@link #generateRangeQuery}) <code>"select * from
+     *       keyspace.table;"</code> will be transformed into <code>"select * from keyspace.table WHERE
+     *       (token(%s) >= ?) AND (token(%s) < ?);"</code>
+     *   <li>When generating a lowest query (see {@link #getLowestSplitQuery}), the lowest token is
+     *       provided and <code>"(token(partitionKey) < token)"</code> filter clause will be added
+     *   <li>When generating a highest query (see {@link #getHighestSplitQuery}), the highest token
+     *       is provided and <code>"(token(partitionKey) >= token)"</code> filter clause will be added
+     * </ul>
+     *
+     * @param query the user input query
+     * @param partitionKey Cassandra partition key of the user provided table
+     * @param token optional ring token value. If specified, the returned query is not a prepared
+     *     statement (the token value is set)
+     * @param whereFilter the token based filter clause template if user query contains a where
+     *     clause already
+     * @param noWhereFilter the token based filter clause template if user query does not contain a
+     *     where clause already
+     * @return the final split query that will be sent to the Cassandra cluster
+     */
     private static String generateQuery(
             String query,
             String partitionKey,
