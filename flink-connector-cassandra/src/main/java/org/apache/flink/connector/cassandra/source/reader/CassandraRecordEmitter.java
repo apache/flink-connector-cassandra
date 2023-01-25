@@ -54,7 +54,7 @@ public class CassandraRecordEmitter<OUT>
     public CassandraRecordEmitter(
             Class<OUT> pojoClass, ClusterBuilder clusterBuilder, MapperOptions mapperOptions) {
         // session and cluster are managed at the SplitReader level. So we need to create one
-        // locally here just to me able to create the mapper.
+        // locally here just to be able to create the mapper.
         final Cluster cluster = clusterBuilder.getCluster();
         final Session session = cluster.connect();
         mapper = new MappingManager(session).mapper(pojoClass);

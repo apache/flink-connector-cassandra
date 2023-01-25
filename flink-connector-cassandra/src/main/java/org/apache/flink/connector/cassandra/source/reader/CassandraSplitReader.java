@@ -72,7 +72,7 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
 
     public CassandraSplitReader(ClusterBuilder clusterBuilder, String query) {
         // need a thread safe set
-        this.unprocessedSplits = ConcurrentHashMap.newKeySet();
+         this.unprocessedSplits = ConcurrentHashMap.newKeySet();
         this.query = query;
         cluster = clusterBuilder.getCluster();
         session = cluster.connect();
@@ -213,16 +213,19 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
      *
      * <ul>
      *   <li>When generating a range query (see {@link #generateRangeQuery}) <code>"select * from
-     *       keyspace.table where field1=value1;"</code> will be transformed into <code>"select * from
+     *       keyspace.table where field1=value1;"</code> will be transformed into <code>
+     *       "select * from
      *       keyspace.table where (token(partitionKey) >= ?) AND (token(partitionKey) < ?) AND
      *       field1=value1;"</code>
      *   <li>When generating a range query (see {@link #generateRangeQuery}) <code>"select * from
-     *       keyspace.table;"</code> will be transformed into <code>"select * from keyspace.table WHERE
+     *       keyspace.table;"</code> will be transformed into <code>
+     *       "select * from keyspace.table WHERE
      *       (token(%s) >= ?) AND (token(%s) < ?);"</code>
      *   <li>When generating a lowest query (see {@link #getLowestSplitQuery}), the lowest token is
      *       provided and <code>"(token(partitionKey) < token)"</code> filter clause will be added
      *   <li>When generating a highest query (see {@link #getHighestSplitQuery}), the highest token
-     *       is provided and <code>"(token(partitionKey) >= token)"</code> filter clause will be added
+     *       is provided and <code>"(token(partitionKey) >= token)"</code> filter clause will be
+     *       added
      * </ul>
      *
      * @param query the user input query
