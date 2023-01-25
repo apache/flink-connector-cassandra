@@ -48,7 +48,7 @@ public class CassandraEnumeratorStateSerializerTest {
                                         RingRange.of(BigInteger.ZERO, BigInteger.ONE),
                                         RingRange.of(BigInteger.ONE, BigInteger.TEN))));
 
-        cassandraEnumeratorState.addNewSplits(testData, 1);
+        cassandraEnumeratorState.addNewSplits(testData);
         final byte[] serialized =
                 CassandraEnumeratorStateSerializer.INSTANCE.serialize(cassandraEnumeratorState);
         final CassandraEnumeratorState deserialized =

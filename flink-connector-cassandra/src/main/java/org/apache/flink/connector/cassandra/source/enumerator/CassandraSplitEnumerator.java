@@ -20,12 +20,9 @@ package org.apache.flink.connector.cassandra.source.enumerator;
 
 import org.apache.flink.api.connector.source.SplitEnumerator;
 import org.apache.flink.api.connector.source.SplitEnumeratorContext;
-import org.apache.flink.api.connector.source.SplitsAssignment;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 import org.apache.flink.connector.cassandra.source.split.SplitsGenerator;
 import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
-
-import org.apache.flink.shaded.guava30.com.google.common.collect.Lists;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Metadata;
@@ -37,10 +34,7 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.apache.flink.connector.cassandra.source.split.SplitsGenerator.CassandraPartitioner.MURMUR3PARTITIONER;
@@ -66,7 +60,7 @@ public final class CassandraSplitEnumerator
 
     @Override
     public void handleSplitRequest(int subtaskId, @Nullable String requesterHostname) {
-        assignUnprocessedSplitsToReader(subtaskId);
+        assignUnprocessedSplitToReader(subtaskId);
     }
 
     @Override
@@ -77,7 +71,7 @@ public final class CassandraSplitEnumerator
                 this::discoverSplits,
                 (splits, throwable) -> {
                     LOG.info("Add {} splits to CassandraSplitEnumerator.", splits.size());
-                    state.addNewSplits(splits, enumeratorContext.currentParallelism());
+                    state.addNewSplits(splits);
                 });
     }
 
@@ -115,29 +109,22 @@ public final class CassandraSplitEnumerator
     @Override
     public void addSplitsBack(List<CassandraSplit> splits, int subtaskId) {
         LOG.info("Add {} splits back to CassandraSplitEnumerator.", splits.size());
-        state.addNewSplits(splits, enumeratorContext.currentParallelism());
-        assignUnprocessedSplitsToReader(subtaskId);
+        state.addNewSplits(splits);
     }
 
     @Override
     public void addReader(int subtaskId) {
         LOG.info("Adding reader {} to CassandraSplitEnumerator.", subtaskId);
-        assignUnprocessedSplitsToReader(subtaskId);
+        assignUnprocessedSplitToReader(subtaskId);
     }
 
-    private void assignUnprocessedSplitsToReader(int readerId) {
+    private void assignUnprocessedSplitToReader(int readerId) {
         checkReaderRegistered(readerId);
-
-        final Set<CassandraSplit> splitsForReader = state.getSplitsForReader(readerId);
-        if (splitsForReader != null && !splitsForReader.isEmpty()) {
-            Map<Integer, List<CassandraSplit>> assignment = new HashMap<>();
-            assignment.put(readerId, Lists.newArrayList(splitsForReader));
-            LOG.info("Assigning splits to reader {}", assignment);
-            enumeratorContext.assignSplits(new SplitsAssignment<>(assignment));
-        }
-
-        // periodically partition discovery is disabled, signal NoMoreSplitsEvent to the reader
-        LOG.debug(
+        final CassandraSplit cassandraSplit = state.getASplit();
+        LOG.info("Assigning splits to reader {}", readerId);
+        enumeratorContext.assignSplit(cassandraSplit, readerId);
+        // one split per reader
+        LOG.info(
                 "No more CassandraSplits to assign. Sending NoMoreSplitsEvent to reader {}.",
                 readerId);
         enumeratorContext.signalNoMoreSplits(readerId);

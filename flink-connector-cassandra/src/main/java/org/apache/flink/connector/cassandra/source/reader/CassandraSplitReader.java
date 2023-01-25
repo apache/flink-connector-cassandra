@@ -47,7 +47,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -71,8 +70,7 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
     private final String query;
 
     public CassandraSplitReader(ClusterBuilder clusterBuilder, String query) {
-        // need a thread safe set
-         this.unprocessedSplits = ConcurrentHashMap.newKeySet();
+        this.unprocessedSplits = new HashSet<>();
         this.query = query;
         cluster = clusterBuilder.getCluster();
         session = cluster.connect();

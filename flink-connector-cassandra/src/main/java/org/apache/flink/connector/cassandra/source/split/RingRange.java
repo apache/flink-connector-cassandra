@@ -76,13 +76,8 @@ public final class RingRange implements Serializable {
         if (o == null || getClass() != o.getClass()) {
             return false;
         }
-
-        RingRange ringRange = (RingRange) o;
-
-        if (!getStart().equals(ringRange.getStart())) {
-            return false;
-        }
-        return getEnd().equals(ringRange.getEnd());
+        RingRange other = (RingRange) o;
+        return getStart().equals(other.getStart()) && getEnd().equals(other.getEnd());
     }
 
     @Override
