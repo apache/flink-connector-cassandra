@@ -25,55 +25,53 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.math.BigInteger;
-import java.util.HashSet;
-import java.util.Objects;
-import java.util.Set;
 
 /**
- * Immutable {@link SourceSplit} for Cassandra source. A Cassandra split is a set of {@link
- * RingRange}s (a range between 2 tokens). Tokens are spread across the Cassandra cluster with each
- * node managing a share of the token ring. Each split can contain several token ranges in order to
- * reduce the overhead on Cassandra vnodes.
+ * Immutable {@link SourceSplit} for Cassandra source. A Cassandra split is a slice of the Cassandra
+ * tokens ring (i.e. a ringRange).
  */
 public class CassandraSplit implements SourceSplit, Serializable {
 
-    private final Set<RingRange> ringRanges;
+    private final BigInteger ringRangeStart;
+    private final BigInteger ringRangeEnd;
 
-    public CassandraSplit(Set<RingRange> ringRanges) {
-        this.ringRanges = ringRanges;
+    public CassandraSplit(BigInteger ringRangeStart, BigInteger ringRangeEnd) {
+        this.ringRangeStart = ringRangeStart;
+        this.ringRangeEnd = ringRangeEnd;
+    }
+
+    public BigInteger getRingRangeStart() {
+        return ringRangeStart;
+    }
+
+    public BigInteger getRingRangeEnd() {
+        return ringRangeEnd;
     }
 
     @Override
     public String splitId() {
-        return ringRanges.toString();
-    }
-
-    public CassandraSplitState toSplitState() {
-        return new CassandraSplitState(new HashSet<>(ringRanges), splitId());
+        return String.format("(%s,%s)", ringRangeStart.toString(), ringRangeEnd.toString());
     }
 
     public void serialize(ObjectOutputStream objectOutputStream) throws IOException {
-        objectOutputStream.writeInt(ringRanges.size());
-        for (RingRange ringRange : ringRanges) {
-            objectOutputStream.writeObject(ringRange.getStart());
-            objectOutputStream.writeObject(ringRange.getEnd());
-        }
+        objectOutputStream.writeObject(ringRangeStart);
+        objectOutputStream.writeObject(ringRangeEnd);
     }
 
     public static CassandraSplit deserialize(ObjectInputStream objectInputStream)
             throws IOException {
         try {
-            final int nbRingRanges = objectInputStream.readInt();
-            Set<RingRange> ringRanges = new HashSet<>(nbRingRanges);
-            for (int i = 0; i < nbRingRanges; i++) {
-                final BigInteger start = (BigInteger) objectInputStream.readObject();
-                final BigInteger end = (BigInteger) objectInputStream.readObject();
-                ringRanges.add(RingRange.of(start, end));
-            }
-            return new CassandraSplit(ringRanges);
+            final BigInteger ringRangeStart = (BigInteger) objectInputStream.readObject();
+            final BigInteger ringRangeEnd = (BigInteger) objectInputStream.readObject();
+            return new CassandraSplit(ringRangeStart, ringRangeEnd);
         } catch (Exception e) {
             throw new IOException(e);
         }
+    }
+
+    @Override
+    public String toString() {
+        return splitId();
     }
 
     @Override
@@ -84,12 +82,13 @@ public class CassandraSplit implements SourceSplit, Serializable {
         if (o == null || getClass() != o.getClass()) {
             return false;
         }
-        CassandraSplit that = (CassandraSplit) o;
-        return ringRanges.equals(that.ringRanges);
+        CassandraSplit other = (CassandraSplit) o;
+        return ringRangeStart.equals(other.ringRangeStart)
+                && ringRangeEnd.equals(other.ringRangeEnd);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(ringRanges);
+        return 31 * ringRangeStart.hashCode() + ringRangeEnd.hashCode();
     }
 }

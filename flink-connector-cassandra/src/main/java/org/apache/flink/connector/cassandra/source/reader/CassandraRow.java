@@ -18,34 +18,26 @@
 
 package org.apache.flink.connector.cassandra.source.reader;
 
-import org.apache.flink.connector.cassandra.source.split.RingRange;
-
 import com.datastax.driver.core.ExecutionInfo;
 import com.datastax.driver.core.Row;
 
 /**
- * Wrapper for Cassandra {@link Row} that stores associated {@link RingRange} to be able to update
- * split states. It also stores {@link ExecutionInfo} Cassandra statistics about the query execution
- * that produced this row.
+ * Wrapper for Cassandra {@link Row} that stores {@link ExecutionInfo} Cassandra statistics about
+ * the query execution that produced this row. {@link ExecutionInfo} is useful for using the
+ * Cassandra mapper during row translation to pojo.
  */
 public class CassandraRow {
 
     private final Row row;
-    private final RingRange associatedRingRange;
     private final ExecutionInfo executionInfo;
 
-    public CassandraRow(Row row, RingRange associatedRingRange, ExecutionInfo executionInfo) {
+    public CassandraRow(Row row, ExecutionInfo executionInfo) {
         this.row = row;
-        this.associatedRingRange = associatedRingRange;
         this.executionInfo = executionInfo;
     }
 
     public Row getRow() {
         return row;
-    }
-
-    public RingRange getAssociatedRingRange() {
-        return associatedRingRange;
     }
 
     public ExecutionInfo getExecutionInfo() {

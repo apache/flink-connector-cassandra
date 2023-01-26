@@ -32,10 +32,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
-import java.math.BigInteger;
-import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import static org.apache.flink.connector.cassandra.source.split.SplitsGenerator.CassandraPartitioner.MURMUR3PARTITIONER;
 import static org.apache.flink.connector.cassandra.source.split.SplitsGenerator.CassandraPartitioner.RANDOMPARTITIONER;
@@ -83,27 +80,7 @@ public final class CassandraSplitEnumerator
                 partitionerName.contains(MURMUR3PARTITIONER.className())
                         ? MURMUR3PARTITIONER
                         : RANDOMPARTITIONER;
-        final SplitsGenerator splitsGenerator = new SplitsGenerator(partitioner);
-        if (partitioner == MURMUR3PARTITIONER) {
-            LOG.info("Murmur3Partitioner detected, splitting");
-            List<BigInteger> tokens =
-                    clusterMetadata.getTokenRanges().stream()
-                            .map(
-                                    tokenRange ->
-                                            new BigInteger(
-                                                    tokenRange.getEnd().getValue().toString()))
-                            .collect(Collectors.toList());
-            return splitsGenerator.generateSplits(numberOfSplits, tokens);
-        } else {
-            // Murmur3Partitioner is the default and recommended partitioner for Cassandra 1.2+
-            // see
-            // https://docs.datastax.com/en/cassandra-oss/3.x/cassandra/architecture/archPartitionerAbout.html
-            LOG.warn(
-                    "The current Cassandra partitioner is {}, only Murmur3Partitioner is supported "
-                            + "for splitting, using a single split",
-                    partitioner);
-            return splitsGenerator.generateSplits(1, Collections.emptyList());
-        }
+        return new SplitsGenerator(partitioner).generateSplits(numberOfSplits);
     }
 
     @Override
@@ -138,7 +115,7 @@ public final class CassandraSplitEnumerator
     }
 
     @Override
-    public CassandraEnumeratorState snapshotState(long checkpointId) throws Exception {
+    public CassandraEnumeratorState snapshotState(long checkpointId) {
         return state;
     }
 

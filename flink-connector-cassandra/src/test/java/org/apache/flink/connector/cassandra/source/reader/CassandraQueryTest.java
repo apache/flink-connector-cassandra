@@ -22,7 +22,6 @@ import org.apache.flink.connector.cassandra.source.CassandraSource;
 
 import org.junit.jupiter.api.Test;
 
-import java.math.BigInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -137,56 +136,5 @@ class CassandraQueryTest {
         assertThat(outputQuery)
                 .isEqualTo(
                         "SELECT field FROM keyspace.table WHERE (token(field) >= ?) AND (token(field) < ?) LIMIT(1000);");
-    }
-
-    @Test
-    public void testGetHighestSplitQuery() {
-        String query;
-        String outputQuery;
-
-        // query with where clause
-        query = "SELECT field FROM keyspace.table WHERE field = value;";
-        outputQuery = CassandraSplitReader.getHighestSplitQuery(query, "field", BigInteger.ZERO);
-        assertThat(outputQuery)
-                .isEqualTo(
-                        "SELECT field FROM keyspace.table WHERE (token(field) >= 0) AND field = value;");
-
-        // query without where clause
-        query = "SELECT * FROM keyspace.table;";
-        outputQuery = CassandraSplitReader.getHighestSplitQuery(query, "field", BigInteger.ZERO);
-        assertThat(outputQuery)
-                .isEqualTo("SELECT * FROM keyspace.table WHERE (token(field) >= 0);");
-
-        // query without where clause but with another trailing clause
-        query = "SELECT field FROM keyspace.table LIMIT(1000);";
-        outputQuery = CassandraSplitReader.getHighestSplitQuery(query, "field", BigInteger.ZERO);
-        assertThat(outputQuery)
-                .isEqualTo(
-                        "SELECT field FROM keyspace.table WHERE (token(field) >= 0) LIMIT(1000);");
-    }
-
-    @Test
-    public void testGetLowestSplitQuery() {
-        String query;
-        String outputQuery;
-
-        // query with where clause
-        query = "SELECT field FROM keyspace.table WHERE field = value;";
-        outputQuery = CassandraSplitReader.getLowestSplitQuery(query, "field", BigInteger.ZERO);
-        assertThat(outputQuery)
-                .isEqualTo(
-                        "SELECT field FROM keyspace.table WHERE (token(field) < 0) AND field = value;");
-
-        // query without where clause
-        query = "SELECT * FROM keyspace.table;";
-        outputQuery = CassandraSplitReader.getLowestSplitQuery(query, "field", BigInteger.ZERO);
-        assertThat(outputQuery).isEqualTo("SELECT * FROM keyspace.table WHERE (token(field) < 0);");
-
-        // query without where clause but with another trailing clause
-        query = "SELECT field FROM keyspace.table LIMIT(1000);";
-        outputQuery = CassandraSplitReader.getLowestSplitQuery(query, "field", BigInteger.ZERO);
-        assertThat(outputQuery)
-                .isEqualTo(
-                        "SELECT field FROM keyspace.table WHERE (token(field) < 0) LIMIT(1000);");
     }
 }

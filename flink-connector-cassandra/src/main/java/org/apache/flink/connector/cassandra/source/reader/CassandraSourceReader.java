@@ -23,7 +23,6 @@ import org.apache.flink.api.connector.source.SourceReaderContext;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.base.source.reader.SingleThreadMultiplexSourceReaderBase;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
-import org.apache.flink.connector.cassandra.source.split.CassandraSplitState;
 import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
 import org.apache.flink.streaming.connectors.cassandra.MapperOptions;
 
@@ -31,13 +30,17 @@ import java.util.Map;
 
 /**
  * Cassandra {@link SourceReader} that reads one {@link CassandraSplit} using a single thread.
- * Indeed, this is for reducing the load on Cassandra cluster (see {@link CassandraSplit}).
  *
  * @param <OUT> the type of elements produced by the source
  */
 public class CassandraSourceReader<OUT>
         extends SingleThreadMultiplexSourceReaderBase<
-                CassandraRow, OUT, CassandraSplit, CassandraSplitState> {
+                CassandraRow,
+                OUT,
+                CassandraSplit,
+                CassandraSplit> { // no need for a mutable CassandraSplit type as the CassandraSplit
+    // is atomically processed. The splits processing advancement is tracked by
+    // CassandraSplitReader#unprocessedSplits
 
     public CassandraSourceReader(
             SourceReaderContext context,
@@ -53,17 +56,17 @@ public class CassandraSourceReader<OUT>
     }
 
     @Override
-    protected void onSplitFinished(Map<String, CassandraSplitState> finishedSplitIds) {
-        finishedSplitIds.forEach((key, splitState) -> splitState.markAllRingRangesAsFinished());
+    protected void onSplitFinished(Map<String, CassandraSplit> finishedSplitIds) {
+        // nothing to do
     }
 
     @Override
-    protected CassandraSplitState initializedState(CassandraSplit cassandraSplit) {
-        return cassandraSplit.toSplitState();
+    protected CassandraSplit initializedState(CassandraSplit cassandraSplit) {
+        return cassandraSplit;
     }
 
     @Override
-    protected CassandraSplit toSplitType(String splitId, CassandraSplitState splitState) {
-        return new CassandraSplit(splitState.getUnprocessedRingRanges());
+    protected CassandraSplit toSplitType(String splitId, CassandraSplit cassandraSplit) {
+        return cassandraSplit;
     }
 }

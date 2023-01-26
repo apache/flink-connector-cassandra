@@ -18,8 +18,6 @@
 
 package org.apache.flink.connector.cassandra.source.split;
 
-import org.apache.flink.shaded.guava30.com.google.common.collect.ImmutableSet;
-
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -32,11 +30,7 @@ public class CassandraSplitSerializerTest {
 
     @Test
     public void testSerdeRoundtrip() throws IOException {
-        final CassandraSplit testData =
-                new CassandraSplit(
-                        ImmutableSet.of(
-                                RingRange.of(BigInteger.ONE, BigInteger.TEN),
-                                RingRange.of(BigInteger.ZERO, BigInteger.TEN)));
+        final CassandraSplit testData = new CassandraSplit(BigInteger.ONE, BigInteger.TEN);
         final byte[] serialized = CassandraSplitSerializer.INSTANCE.serialize(testData);
         final CassandraSplit deserialized =
                 CassandraSplitSerializer.INSTANCE.deserialize(

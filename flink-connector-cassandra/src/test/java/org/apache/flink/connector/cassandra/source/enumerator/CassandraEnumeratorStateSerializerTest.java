@@ -19,10 +19,8 @@
 package org.apache.flink.connector.cassandra.source.enumerator;
 
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
-import org.apache.flink.connector.cassandra.source.split.RingRange;
 
 import org.apache.flink.shaded.guava30.com.google.common.collect.ImmutableList;
-import org.apache.flink.shaded.guava30.com.google.common.collect.ImmutableSet;
 
 import org.junit.jupiter.api.Test;
 
@@ -39,14 +37,8 @@ public class CassandraEnumeratorStateSerializerTest {
         final CassandraEnumeratorState cassandraEnumeratorState = new CassandraEnumeratorState();
         final List<CassandraSplit> testData =
                 ImmutableList.of(
-                        new CassandraSplit(
-                                ImmutableSet.of(
-                                        RingRange.of(BigInteger.ONE, BigInteger.TEN),
-                                        RingRange.of(BigInteger.ZERO, BigInteger.TEN))),
-                        new CassandraSplit(
-                                ImmutableSet.of(
-                                        RingRange.of(BigInteger.ZERO, BigInteger.ONE),
-                                        RingRange.of(BigInteger.ONE, BigInteger.TEN))));
+                        new CassandraSplit(BigInteger.ZERO, BigInteger.TEN),
+                        new CassandraSplit(BigInteger.TEN, BigInteger.ZERO));
 
         cassandraEnumeratorState.addNewSplits(testData);
         final byte[] serialized =

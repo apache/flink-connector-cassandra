@@ -24,8 +24,6 @@ import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
 import org.apache.flink.connector.base.source.reader.splitreader.SplitReader;
 import org.apache.flink.connector.base.source.reader.splitreader.SplitsChange;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
-import org.apache.flink.connector.cassandra.source.split.CassandraSplitState;
-import org.apache.flink.connector.cassandra.source.split.RingRange;
 import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
 
 import com.datastax.driver.core.Cluster;
@@ -38,9 +36,6 @@ import com.datastax.driver.core.Token;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
-
-import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -54,8 +49,8 @@ import java.util.stream.Collectors;
 
 /**
  * {@link SplitReader} for Cassandra source. This class is responsible for fetching the records as
- * {@link CassandraRow}. For that, it executes a range query (query that outputs records belonging
- * to a {@link RingRange}) based on the user specified query. This class manages the Cassandra
+ * {@link CassandraRow}s. For that, it executes a range query (query that outputs records belonging
+ * to Cassandra token range) based on the user specified query. This class manages the Cassandra
  * cluster and session.
  */
 public class CassandraSplitReader implements SplitReader<CassandraRow, CassandraSplit> {
@@ -65,7 +60,7 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
 
     private final Cluster cluster;
     private final Session session;
-    private final Set<CassandraSplitState> unprocessedSplits;
+    private final Set<CassandraSplit> unprocessedSplits;
     private final AtomicBoolean wakeup = new AtomicBoolean(false);
     private final String query;
 
@@ -80,77 +75,40 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
     public RecordsWithSplitIds<CassandraRow> fetch() {
         Map<String, Collection<CassandraRow>> recordsBySplit = new HashMap<>();
         Set<String> finishedSplits = new HashSet<>();
-        Metadata clusterMetadata = cluster.getMetadata();
 
+        Metadata clusterMetadata = cluster.getMetadata();
         String partitionKey = getPartitionKey(clusterMetadata);
         String finalQuery = generateRangeQuery(query, partitionKey);
         PreparedStatement preparedStatement = session.prepare(finalQuery);
-        // Set wakeup to false to start consuming.
+
+        // Set wakeup to false to start consuming
         wakeup.compareAndSet(true, false);
-        for (CassandraSplitState cassandraSplitState : unprocessedSplits) {
-            // allow to interrupt the reading of splits as requested in the API
+        for (CassandraSplit cassandraSplit : unprocessedSplits) {
+            // allow to interrupt the reading of splits especially the blocking session.execute()
+            // call) as requested in the API
             if (wakeup.get()) {
                 break;
             }
-            if (!cassandraSplitState.isEmpty()) {
-                try {
-                    final Set<RingRange> ringRanges =
-                            cassandraSplitState.getUnprocessedRingRanges();
-                    final String cassandraSplitId = cassandraSplitState.getSplitId();
-
-                    for (RingRange ringRange : ringRanges) {
-                        Token startToken =
-                                clusterMetadata.newToken(ringRange.getStart().toString());
-                        Token endToken = clusterMetadata.newToken(ringRange.getEnd().toString());
-                        if (ringRange.isWrapping()) {
-                            // A wrapping range is one that overlaps from the end of the partitioner
-                            // range and its
-                            // start (ie : when the start token of the split is greater than the end
-                            // token)
-                            // We need to generate two queries here : one that goes from the start
-                            // token to the end
-                            // of
-                            // the partitioner range, and the other from the start of the
-                            // partitioner range to the
-                            // end token of the split.
-
-                            addRecordsToOutput(
-                                    session.execute(
-                                            getLowestSplitQuery(
-                                                    query, partitionKey, ringRange.getEnd())),
-                                    recordsBySplit,
-                                    cassandraSplitId,
-                                    ringRange);
-                            addRecordsToOutput(
-                                    session.execute(
-                                            getHighestSplitQuery(
-                                                    query, partitionKey, ringRange.getStart())),
-                                    recordsBySplit,
-                                    cassandraSplitId,
-                                    ringRange);
-                        } else {
-                            addRecordsToOutput(
-                                    session.execute(
-                                            preparedStatement
-                                                    .bind()
-                                                    .setToken(0, startToken)
-                                                    .setToken(1, endToken)),
-                                    recordsBySplit,
-                                    cassandraSplitId,
-                                    ringRange);
-                        }
-                        cassandraSplitState.markRingRangeAsFinished(ringRange);
-                    }
-                    // put the already read split to finished splits
-                    finishedSplits.add(cassandraSplitState.getSplitId());
-                    // for reentrant calls: if fetch is woken up,
-                    // do not reprocess the already processed splits
-                    unprocessedSplits.remove(cassandraSplitState);
-                } catch (Exception ex) {
-                    LOG.error("Error while reading split ", ex);
-                }
-            } else {
-                finishedSplits.add(cassandraSplitState.getSplitId());
+            try {
+                final String cassandraSplitId = cassandraSplit.splitId();
+                Token startToken =
+                        clusterMetadata.newToken(cassandraSplit.getRingRangeStart().toString());
+                Token endToken =
+                        clusterMetadata.newToken(cassandraSplit.getRingRangeEnd().toString());
+                final ResultSet resultSet =
+                        session.execute(
+                                preparedStatement
+                                        .bind()
+                                        .setToken(0, startToken)
+                                        .setToken(1, endToken));
+                addRecordsToOutput(resultSet, recordsBySplit, cassandraSplitId);
+                // put the already read split to finished splits
+                finishedSplits.add(cassandraSplitId);
+                // for reentrant calls: if fetch is woken up,
+                // do not reprocess the already processed splits
+                unprocessedSplits.remove(cassandraSplit);
+            } catch (Exception ex) {
+                LOG.error("Error while reading split ", ex);
             }
         }
         return new RecordsBySplits<>(recordsBySplit, finishedSplits);
@@ -178,70 +136,31 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
 
     @Override
     public void handleSplitsChanges(SplitsChange<CassandraSplit> splitsChanges) {
-        for (CassandraSplit cassandraSplit : splitsChanges.splits()) {
-            unprocessedSplits.add(cassandraSplit.toSplitState());
-        }
-    }
-
-    @VisibleForTesting
-    static String getHighestSplitQuery(String query, String partitionKey, BigInteger highest) {
-        return generateQuery(
-                query, partitionKey, highest, " (token(%s) >= %d) AND", " WHERE (token(%s) >= %d)");
-    }
-
-    @VisibleForTesting
-    static String getLowestSplitQuery(String query, String partitionKey, BigInteger lowest) {
-        return generateQuery(
-                query, partitionKey, lowest, " (token(%s) < %d) AND", " WHERE (token(%s) < %d)");
-    }
-
-    @VisibleForTesting
-    static String generateRangeQuery(String query, String partitionKey) {
-        return generateQuery(
-                query,
-                partitionKey,
-                null,
-                " (token(%s) >= ?) AND (token(%s) < ?) AND",
-                " WHERE (token(%s) >= ?) AND (token(%s) < ?)");
+        unprocessedSplits.addAll(splitsChanges.splits());
     }
 
     /**
-     * Utility method to add the provided filtering clause to the user select query. It is used to
-     * add the ring token filtering clauses to generate the split query. For example
+     * Utility method to add the ring token filtering clauses to the user query to generate the
+     * split query. For example:
      *
      * <ul>
-     *   <li>When generating a range query (see {@link #generateRangeQuery}) <code>"select * from
+     *   <li><code>"select * from
      *       keyspace.table where field1=value1;"</code> will be transformed into <code>
      *       "select * from
      *       keyspace.table where (token(partitionKey) >= ?) AND (token(partitionKey) < ?) AND
      *       field1=value1;"</code>
-     *   <li>When generating a range query (see {@link #generateRangeQuery}) <code>"select * from
+     *   <li><code>"select * from
      *       keyspace.table;"</code> will be transformed into <code>
      *       "select * from keyspace.table WHERE
      *       (token(%s) >= ?) AND (token(%s) < ?);"</code>
-     *   <li>When generating a lowest query (see {@link #getLowestSplitQuery}), the lowest token is
-     *       provided and <code>"(token(partitionKey) < token)"</code> filter clause will be added
-     *   <li>When generating a highest query (see {@link #getHighestSplitQuery}), the highest token
-     *       is provided and <code>"(token(partitionKey) >= token)"</code> filter clause will be
-     *       added
      * </ul>
      *
      * @param query the user input query
      * @param partitionKey Cassandra partition key of the user provided table
-     * @param token optional ring token value. If specified, the returned query is not a prepared
-     *     statement (the token value is set)
-     * @param whereFilter the token based filter clause template if user query contains a where
-     *     clause already
-     * @param noWhereFilter the token based filter clause template if user query does not contain a
-     *     where clause already
      * @return the final split query that will be sent to the Cassandra cluster
      */
-    private static String generateQuery(
-            String query,
-            String partitionKey,
-            @Nullable BigInteger token,
-            String whereFilter,
-            String noWhereFilter) {
+    @VisibleForTesting
+    static String generateRangeQuery(String query, String partitionKey) {
         Matcher queryMatcher = Pattern.compile(SELECT_REGEXP).matcher(query);
         if (!queryMatcher.matches()) {
             throw new IllegalStateException(
@@ -255,16 +174,16 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
         if (whereIndex != -1) {
             insertionPoint = whereIndex + "where".length();
             filter =
-                    (token == null)
-                            ? String.format(whereFilter, partitionKey, partitionKey)
-                            : String.format(whereFilter, partitionKey, token);
+                    String.format(
+                            " (token(%s) >= ?) AND (token(%s) < ?) AND",
+                            partitionKey, partitionKey);
         } else {
             // end of keyspace.table
             insertionPoint = queryMatcher.end(2);
             filter =
-                    (token == null)
-                            ? String.format(noWhereFilter, partitionKey, partitionKey)
-                            : String.format(noWhereFilter, partitionKey, token);
+                    String.format(
+                            " WHERE (token(%s) >= ?) AND (token(%s) < ?)",
+                            partitionKey, partitionKey);
         }
         return String.format(
                 "%s%s%s",
@@ -279,14 +198,11 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
     private void addRecordsToOutput(
             ResultSet resultSet,
             Map<String, Collection<CassandraRow>> output,
-            String cassandraSplitId,
-            RingRange ringRange) {
+            String cassandraSplitId) {
         resultSet.forEach(
                 row ->
                         output.computeIfAbsent(cassandraSplitId, id -> new ArrayList<>())
-                                .add(
-                                        new CassandraRow(
-                                                row, ringRange, resultSet.getExecutionInfo())));
+                                .add(new CassandraRow(row, resultSet.getExecutionInfo())));
     }
 
     @Override
