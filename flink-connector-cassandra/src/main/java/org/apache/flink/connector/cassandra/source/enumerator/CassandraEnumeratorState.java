@@ -23,14 +23,13 @@ import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.Serializable;
 import java.util.ArrayDeque;
 import java.util.Collection;
 import java.util.Objects;
 import java.util.Queue;
 
 /** Sate for {@link CassandraSplitEnumerator} to track the splits yet to assign. */
-public class CassandraEnumeratorState implements Serializable {
+public class CassandraEnumeratorState {
     private final Queue<CassandraSplit> unassignedSplits;
 
     public CassandraEnumeratorState() {

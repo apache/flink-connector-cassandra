@@ -24,6 +24,7 @@ import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
 import org.apache.flink.connector.base.source.reader.splitreader.SplitReader;
 import org.apache.flink.connector.base.source.reader.splitreader.SplitsChange;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
+import org.apache.flink.connector.cassandra.source.split.CassandraSplitState;
 import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
 
 import com.datastax.driver.core.Cluster;
@@ -31,6 +32,7 @@ import com.datastax.driver.core.ColumnMetadata;
 import com.datastax.driver.core.Metadata;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
+import com.datastax.driver.core.Row;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.Token;
 import org.slf4j.Logger;
@@ -60,13 +62,16 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
 
     private final Cluster cluster;
     private final Session session;
-    private final Set<CassandraSplit> unprocessedSplits;
+    private final Set<CassandraSplitState> unprocessedSplits;
     private final AtomicBoolean wakeup = new AtomicBoolean(false);
     private final String query;
+    private final int maxRecordsPerSplit;
 
-    public CassandraSplitReader(ClusterBuilder clusterBuilder, String query) {
+    public CassandraSplitReader(
+            ClusterBuilder clusterBuilder, String query, int maxRecordsPerSplit) {
         this.unprocessedSplits = new HashSet<>();
         this.query = query;
+        this.maxRecordsPerSplit = maxRecordsPerSplit;
         cluster = clusterBuilder.getCluster();
         session = cluster.connect();
     }
@@ -83,30 +88,38 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
 
         // Set wakeup to false to start consuming
         wakeup.compareAndSet(true, false);
-        for (CassandraSplit cassandraSplit : unprocessedSplits) {
+        for (CassandraSplitState cassandraSplitState : unprocessedSplits) {
             // allow to interrupt the reading of splits especially the blocking session.execute()
             // call) as requested in the API
             if (wakeup.get()) {
                 break;
             }
             try {
-                final String cassandraSplitId = cassandraSplit.splitId();
-                Token startToken =
-                        clusterMetadata.newToken(cassandraSplit.getRingRangeStart().toString());
-                Token endToken =
-                        clusterMetadata.newToken(cassandraSplit.getRingRangeEnd().toString());
-                final ResultSet resultSet =
-                        session.execute(
-                                preparedStatement
-                                        .bind()
-                                        .setToken(0, startToken)
-                                        .setToken(1, endToken));
-                addRecordsToOutput(resultSet, recordsBySplit, cassandraSplitId);
-                // put the already read split to finished splits
+                // TODO add a test for resume of fetch()
+                if (cassandraSplitState.getResultSet() != null) { // resumed fetch()
+                    // add the records already contained in cassandraSplitState#resultSet
+                    addRecordsToOutput(null, cassandraSplitState, recordsBySplit);
+                } else { // first time we read this split
+                    Token startToken =
+                            clusterMetadata.newToken(
+                                    cassandraSplitState.getRingRangeStart().toString());
+                    Token endToken =
+                            clusterMetadata.newToken(
+                                    cassandraSplitState.getRingRangeEnd().toString());
+                    final ResultSet resultSet =
+                            session.execute(
+                                    preparedStatement
+                                            .bind()
+                                            .setToken(0, startToken)
+                                            .setToken(1, endToken));
+                    addRecordsToOutput(resultSet, cassandraSplitState, recordsBySplit);
+                }
+                final String cassandraSplitId = cassandraSplitState.splitId();
+                // add the already read (or even empty) split to finished splits
                 finishedSplits.add(cassandraSplitId);
-                // for reentrant calls: if fetch is woken up,
+                // for reentrant calls: if fetch is restarted,
                 // do not reprocess the already processed splits
-                unprocessedSplits.remove(cassandraSplit);
+                unprocessedSplits.remove(cassandraSplitState);
             } catch (Exception ex) {
                 LOG.error("Error while reading split ", ex);
             }
@@ -136,7 +149,9 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
 
     @Override
     public void handleSplitsChanges(SplitsChange<CassandraSplit> splitsChanges) {
-        unprocessedSplits.addAll(splitsChanges.splits());
+        for (CassandraSplit cassandraSplit : splitsChanges.splits()) {
+            unprocessedSplits.add(new CassandraSplitState(cassandraSplit));
+        }
     }
 
     /**
@@ -193,16 +208,30 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
     /**
      * This method populates the {@code Map<String, Collection<CassandraRow>> recordsBySplit} map
      * that is used to create the {@link RecordsBySplits} that are output by the fetch method. It
-     * modifies its {@code output} parameter.
+     * modifies its {@code output} parameter and updates {@link CassandraSplitState} to keep track
+     * of the output.
      */
     private void addRecordsToOutput(
             ResultSet resultSet,
-            Map<String, Collection<CassandraRow>> output,
-            String cassandraSplitId) {
-        resultSet.forEach(
-                row ->
-                        output.computeIfAbsent(cassandraSplitId, id -> new ArrayList<>())
-                                .add(new CassandraRow(row, resultSet.getExecutionInfo())));
+            CassandraSplitState cassandraSplitState,
+            Map<String, Collection<CassandraRow>> output) {
+        ResultSet finalResultSet;
+        if (resultSet == null) { // resumed fetch()
+            assert cassandraSplitState.getResultSet() != null;
+            finalResultSet = cassandraSplitState.getResultSet();
+        } else { // output the result of the query
+            finalResultSet = resultSet;
+            // keep track of where we are in the resultset
+            cassandraSplitState.setResultSet(finalResultSet);
+        }
+        // output the rows in the ResultSet until no more rows or maxRecordsPerSplit is met
+        int nbRecords = 0;
+        while (nbRecords < maxRecordsPerSplit && !finalResultSet.isExhausted()) {
+            final Row row = finalResultSet.one();
+            output.computeIfAbsent(cassandraSplitState.splitId(), id -> new ArrayList<>())
+                    .add(new CassandraRow(row, finalResultSet.getExecutionInfo()));
+            nbRecords++;
+        }
     }
 
     @Override
