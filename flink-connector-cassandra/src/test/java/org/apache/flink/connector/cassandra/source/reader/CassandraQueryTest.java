@@ -79,36 +79,36 @@ class CassandraQueryTest {
                                 CassandraSource.checkQueryValidity(
                                         "SELECT COUNT(*) from flink.table;"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("query must not contain aggregate or order clauses ");
+                .hasMessageContaining("Aggregations/OrderBy are not supported");
         assertThatThrownBy(
                         () -> CassandraSource.checkQueryValidity("SELECT AVG(*) from flink.table;"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("query must not contain aggregate or order clauses ");
+                .hasMessageContaining("Aggregations/OrderBy are not supported");
 
         assertThatThrownBy(
                         () -> CassandraSource.checkQueryValidity("SELECT MIN(*) from flink.table;"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("query must not contain aggregate or order clauses ");
+                .hasMessageContaining("Aggregations/OrderBy are not supported");
         assertThatThrownBy(
                         () -> CassandraSource.checkQueryValidity("SELECT MAX(*) from flink.table;"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("query must not contain aggregate or order clauses ");
+                .hasMessageContaining("Aggregations/OrderBy are not supported");
         assertThatThrownBy(
                         () -> CassandraSource.checkQueryValidity("SELECT SUM(*) from flink.table;"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("query must not contain aggregate or order clauses ");
+                .hasMessageContaining("Aggregations/OrderBy are not supported");
         assertThatThrownBy(
                         () ->
                                 CassandraSource.checkQueryValidity(
                                         "SELECT field1, field2 from flink.table ORDER BY field1;"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("query must not contain aggregate or order clauses ");
+                .hasMessageContaining("Aggregations/OrderBy are not supported");
         assertThatThrownBy(
                         () ->
                                 CassandraSource.checkQueryValidity(
                                         "SELECT field1, field2 from flink.table GROUP BY field1;"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("query must not contain aggregate or order clauses ");
+                .hasMessageContaining("Aggregations/OrderBy are not supported");
     }
 
     @Test

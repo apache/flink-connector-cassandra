@@ -156,7 +156,6 @@ public class CassandraSource<OUT>
                 "query must be of the form select ... from keyspace.table ...;");
         checkState(
                 !query.matches(CQL_PROHIBITTED_CLAUSES_REGEXP),
-                "query must not contain aggregate or order clauses because they will be done per split. "
-                        + "So they will be incorrect after merging the splits");
+                "Aggregations/OrderBy are not supported because the query is executed on subsets/partitions of the input table");
     }
 }
