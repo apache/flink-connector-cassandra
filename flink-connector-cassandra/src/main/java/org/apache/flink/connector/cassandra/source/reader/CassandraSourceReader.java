@@ -29,6 +29,13 @@ import org.apache.flink.connector.cassandra.source.split.CassandraSplitState;
 import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
 import org.apache.flink.streaming.connectors.cassandra.MapperOptions;
 
+import com.datastax.driver.core.Cluster;
+import com.datastax.driver.core.Session;
+import com.datastax.driver.mapping.Mapper;
+import com.datastax.driver.mapping.MappingManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Map;
 
 /**
@@ -40,17 +47,22 @@ public class CassandraSourceReader<OUT>
         extends SingleThreadMultiplexSourceReaderBase<
                 CassandraRow, OUT, CassandraSplit, CassandraSplitState> {
 
-    // TODO see if there is already and existing conf item or agree on the new name
     private static final String MAX_RECORDS_PER_SPLIT_CONF =
             "execution.source.max-records-per-split";
     private static final int MAX_RECORDS_PER_SPLIT_DEFAULT = 1000;
+    private static final Logger LOG = LoggerFactory.getLogger(CassandraSourceReader.class);
 
-    public CassandraSourceReader(
+    private final Cluster cluster;
+    private final Session session;
+
+    // created by the factory
+    CassandraSourceReader(
             SourceReaderContext context,
-            ClusterBuilder clusterBuilder,
             Class<OUT> pojoClass,
             String query,
-            MapperOptions mapperOptions) {
+            MapperOptions mapperOptions,
+            Cluster cluster,
+            Session session) {
         super(
                 () -> {
                     final Configuration configuration = context.getConfiguration();
@@ -59,16 +71,28 @@ public class CassandraSourceReader<OUT>
                                     .intType()
                                     .defaultValue(MAX_RECORDS_PER_SPLIT_DEFAULT);
                     return new CassandraSplitReader(
-                            clusterBuilder, query, configuration.get(maxRecordsPerSplit));
+                            cluster, session, query, configuration.get(maxRecordsPerSplit));
                 },
-                new CassandraRecordEmitter<>(pojoClass, clusterBuilder, mapperOptions),
+                new CassandraRecordEmitter<>(
+                        resultSet -> {
+                            Mapper<OUT> mapper = new MappingManager(session).mapper(pojoClass);
+                            if (mapperOptions != null) {
+                                Mapper.Option[] optionsArray = mapperOptions.getMapperOptions();
+                                if (optionsArray != null) {
+                                    mapper.setDefaultGetOptions(optionsArray);
+                                }
+                            }
+                            return mapper.map(resultSet).one();
+                        }),
                 context.getConfiguration(),
                 context);
+        this.cluster = cluster;
+        this.session = session;
     }
 
     @Override
     protected void onSplitFinished(Map<String, CassandraSplitState> finishedSplitIds) {
-        // nothing to do
+        context.sendSplitRequest();
     }
 
     @Override
@@ -79,5 +103,24 @@ public class CassandraSourceReader<OUT>
     @Override
     protected CassandraSplit toSplitType(String splitId, CassandraSplitState cassandraSplitState) {
         return cassandraSplitState.getCassandraSplit();
+    }
+
+    @Override
+    public void close() throws Exception {
+        super.close();
+        try {
+            if (session != null) {
+                session.close();
+            }
+        } catch (Exception e) {
+            LOG.error("Error while closing session.", e);
+        }
+        try {
+            if (cluster != null) {
+                cluster.close();
+            }
+        } catch (Exception e) {
+            LOG.error("Error while closing cluster.", e);
+        }
     }
 }

@@ -20,9 +20,6 @@ package org.apache.flink.connector.cassandra.source.enumerator;
 
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.util.ArrayDeque;
 import java.util.Collection;
 import java.util.Objects;
@@ -40,6 +37,10 @@ public class CassandraEnumeratorState {
         this.unassignedSplits = unassignedSplits;
     }
 
+    public Queue<CassandraSplit> getUnassignedSplits() {
+        return unassignedSplits;
+    }
+
     public void addNewSplits(Collection<CassandraSplit> newSplits) {
         unassignedSplits.addAll(newSplits);
     }
@@ -48,22 +49,8 @@ public class CassandraEnumeratorState {
         return unassignedSplits.poll();
     }
 
-    public void serialize(ObjectOutputStream objectOutputStream) throws IOException {
-        objectOutputStream.writeInt(unassignedSplits.size());
-        for (CassandraSplit cassandraSplit : unassignedSplits) {
-            cassandraSplit.serialize(objectOutputStream);
-        }
-    }
-
-    public static CassandraEnumeratorState deserialize(ObjectInputStream objectInputStream)
-            throws IOException {
-        Queue<CassandraSplit> unassignedSplits = new ArrayDeque<>();
-        final int unassignedSplitsSize = objectInputStream.readInt();
-        for (int i = 0; i < unassignedSplitsSize; i++) {
-            final CassandraSplit split = CassandraSplit.deserialize(objectInputStream);
-            unassignedSplits.add(split);
-        }
-        return new CassandraEnumeratorState(unassignedSplits);
+    boolean hasMoreSplits() {
+        return unassignedSplits.size() != 0;
     }
 
     @Override

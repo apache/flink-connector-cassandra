@@ -18,6 +18,8 @@
 
 package org.apache.flink.connector.cassandra.source.enumerator;
 
+import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
+import org.apache.flink.connector.cassandra.source.split.CassandraSplitSerializer;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 
 import java.io.ByteArrayInputStream;
@@ -25,6 +27,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.math.BigInteger;
+import java.util.ArrayDeque;
+import java.util.Queue;
 
 /** Serializer for {@link CassandraEnumeratorState}. */
 public class CassandraEnumeratorStateSerializer
@@ -47,7 +52,12 @@ public class CassandraEnumeratorStateSerializer
         try (ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
                 ObjectOutputStream objectOutputStream =
                         new ObjectOutputStream(byteArrayOutputStream)) {
-            cassandraEnumeratorState.serialize(objectOutputStream);
+            final Queue<CassandraSplit> unassignedSplits =
+                    cassandraEnumeratorState.getUnassignedSplits();
+            objectOutputStream.writeInt(unassignedSplits.size());
+            for (CassandraSplit cassandraSplit : unassignedSplits) {
+                CassandraSplitSerializer.INSTANCE.serialize(cassandraSplit);
+            }
             objectOutputStream.flush();
             return byteArrayOutputStream.toByteArray();
         }
@@ -57,7 +67,18 @@ public class CassandraEnumeratorStateSerializer
     public CassandraEnumeratorState deserialize(int version, byte[] serialized) throws IOException {
         try (ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(serialized);
                 ObjectInputStream objectInputStream = new ObjectInputStream(byteArrayInputStream)) {
-            return CassandraEnumeratorState.deserialize(objectInputStream);
+            Queue<CassandraSplit> unassignedSplits = new ArrayDeque<>();
+            final int unassignedSplitsSize = objectInputStream.readInt();
+            for (int i = 0; i < unassignedSplitsSize; i++) {
+                try {
+                    final BigInteger ringRangeStart = (BigInteger) objectInputStream.readObject();
+                    final BigInteger ringRangeEnd = (BigInteger) objectInputStream.readObject();
+                    unassignedSplits.add(new CassandraSplit(ringRangeStart, ringRangeEnd));
+                } catch (Exception e) {
+                    throw new IOException(e);
+                }
+            }
+            return new CassandraEnumeratorState(unassignedSplits);
         }
     }
 }

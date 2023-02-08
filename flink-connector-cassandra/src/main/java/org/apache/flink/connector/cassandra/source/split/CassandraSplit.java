@@ -20,9 +20,6 @@ package org.apache.flink.connector.cassandra.source.split;
 
 import org.apache.flink.api.connector.source.SourceSplit;
 
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.math.BigInteger;
 
@@ -51,22 +48,6 @@ public class CassandraSplit implements SourceSplit, Serializable {
     @Override
     public String splitId() {
         return String.format("(%s,%s)", ringRangeStart.toString(), ringRangeEnd.toString());
-    }
-
-    public void serialize(ObjectOutputStream objectOutputStream) throws IOException {
-        objectOutputStream.writeObject(ringRangeStart);
-        objectOutputStream.writeObject(ringRangeEnd);
-    }
-
-    public static CassandraSplit deserialize(ObjectInputStream objectInputStream)
-            throws IOException {
-        try {
-            final BigInteger ringRangeStart = (BigInteger) objectInputStream.readObject();
-            final BigInteger ringRangeEnd = (BigInteger) objectInputStream.readObject();
-            return new CassandraSplit(ringRangeStart, ringRangeEnd);
-        } catch (Exception e) {
-            throw new IOException(e);
-        }
     }
 
     @Override

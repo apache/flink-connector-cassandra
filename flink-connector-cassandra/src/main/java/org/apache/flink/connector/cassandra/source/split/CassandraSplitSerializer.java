@@ -25,6 +25,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.math.BigInteger;
 
 /** Serializer for {@link CassandraSplit}. */
 public class CassandraSplitSerializer implements SimpleVersionedSerializer<CassandraSplit> {
@@ -45,7 +46,8 @@ public class CassandraSplitSerializer implements SimpleVersionedSerializer<Cassa
         try (ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
                 ObjectOutputStream objectOutputStream =
                         new ObjectOutputStream(byteArrayOutputStream)) {
-            cassandraSplit.serialize(objectOutputStream);
+            objectOutputStream.writeObject(cassandraSplit.getRingRangeStart());
+            objectOutputStream.writeObject(cassandraSplit.getRingRangeEnd());
             objectOutputStream.flush();
             return byteArrayOutputStream.toByteArray();
         }
@@ -55,7 +57,13 @@ public class CassandraSplitSerializer implements SimpleVersionedSerializer<Cassa
     public CassandraSplit deserialize(int version, byte[] serialized) throws IOException {
         try (ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(serialized);
                 ObjectInputStream objectInputStream = new ObjectInputStream(byteArrayInputStream)) {
-            return CassandraSplit.deserialize(objectInputStream);
+            try {
+                final BigInteger ringRangeStart = (BigInteger) objectInputStream.readObject();
+                final BigInteger ringRangeEnd = (BigInteger) objectInputStream.readObject();
+                return new CassandraSplit(ringRangeStart, ringRangeEnd);
+            } catch (Exception e) {
+                throw new IOException(e);
+            }
         }
     }
 }

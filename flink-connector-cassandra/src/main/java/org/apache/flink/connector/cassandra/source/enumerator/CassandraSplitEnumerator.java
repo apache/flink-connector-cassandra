@@ -98,13 +98,20 @@ public final class CassandraSplitEnumerator
     private void assignUnprocessedSplitToReader(int readerId) {
         checkReaderRegistered(readerId);
         final CassandraSplit cassandraSplit = state.getASplit();
-        LOG.info("Assigning splits to reader {}", readerId);
-        enumeratorContext.assignSplit(cassandraSplit, readerId);
-        // one split per reader
-        LOG.info(
-                "No more CassandraSplits to assign. Sending NoMoreSplitsEvent to reader {}.",
-                readerId);
-        enumeratorContext.signalNoMoreSplits(readerId);
+        if (cassandraSplit != null) {
+            LOG.info("Assigning splits to reader {}", readerId);
+            enumeratorContext.assignSplit(cassandraSplit, readerId);
+        } else {
+            LOG.info(
+                    "No split assigned to reader {} because the enumerator has no unassigned split left",
+                    readerId);
+        }
+        if (!state.hasMoreSplits()) {
+            LOG.info(
+                    "No more CassandraSplits to assign. Sending NoMoreSplitsEvent to reader {}.",
+                    readerId);
+            enumeratorContext.signalNoMoreSplits(readerId);
+        }
     }
 
     private void checkReaderRegistered(int readerId) {

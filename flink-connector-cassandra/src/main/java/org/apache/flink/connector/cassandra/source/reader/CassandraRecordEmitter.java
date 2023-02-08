@@ -21,23 +21,18 @@ package org.apache.flink.connector.cassandra.source.reader;
 import org.apache.flink.api.connector.source.SourceOutput;
 import org.apache.flink.connector.base.source.reader.RecordEmitter;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplitState;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
-import org.apache.flink.streaming.connectors.cassandra.MapperOptions;
 
-import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.ColumnDefinitions;
 import com.datastax.driver.core.ExecutionInfo;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
-import com.datastax.driver.core.Session;
-import com.datastax.driver.mapping.Mapper;
-import com.datastax.driver.mapping.MappingManager;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.function.Function;
 
 /**
  * {@link RecordEmitter} that converts the {@link CassandraRow} read by the {@link
@@ -49,24 +44,10 @@ import java.util.List;
 public class CassandraRecordEmitter<OUT>
         implements RecordEmitter<CassandraRow, OUT, CassandraSplitState> {
 
-    private final Mapper<OUT> mapper;
+    private final Function<ResultSet, OUT> map;
 
-    public CassandraRecordEmitter(
-            Class<OUT> pojoClass, ClusterBuilder clusterBuilder, MapperOptions mapperOptions) {
-        // session and cluster are managed at the SplitReader level. So we need to create one
-        // locally here just to be able to create the mapper.
-        final Cluster cluster = clusterBuilder.getCluster();
-        final Session session = cluster.connect();
-        mapper = new MappingManager(session).mapper(pojoClass);
-        if (mapperOptions != null) {
-            Mapper.Option[] optionsArray = mapperOptions.getMapperOptions();
-            if (optionsArray != null) {
-                mapper.setDefaultGetOptions(optionsArray);
-            }
-        }
-        // close the temporary cluster and session
-        session.close();
-        cluster.close();
+    public CassandraRecordEmitter(Function<ResultSet, OUT> map) {
+        this.map = map;
     }
 
     @Override
@@ -147,6 +128,6 @@ public class CassandraRecordEmitter<OUT>
                     }
                 };
         // output the pojo based on the cassandraRow
-        output.collect(mapper.map(resultSet).one());
+        output.collect(map.apply(resultSet));
     }
 }

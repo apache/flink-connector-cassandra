@@ -34,7 +34,7 @@ import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
 import org.apache.flink.connector.cassandra.source.enumerator.CassandraEnumeratorState;
 import org.apache.flink.connector.cassandra.source.enumerator.CassandraEnumeratorStateSerializer;
 import org.apache.flink.connector.cassandra.source.enumerator.CassandraSplitEnumerator;
-import org.apache.flink.connector.cassandra.source.reader.CassandraSourceReader;
+import org.apache.flink.connector.cassandra.source.reader.CassandraSourceReaderFactory;
 import org.apache.flink.connector.cassandra.source.reader.CassandraSplitReader;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplitSerializer;
@@ -112,8 +112,8 @@ public class CassandraSource<OUT>
     @Internal
     @Override
     public SourceReader<OUT, CassandraSplit> createReader(SourceReaderContext readerContext) {
-        return new CassandraSourceReader<>(
-                readerContext, clusterBuilder, pojoClass, query, mapperOptions);
+        return new CassandraSourceReaderFactory<OUT>()
+                .create(readerContext, clusterBuilder, pojoClass, query, mapperOptions);
     }
 
     @Internal

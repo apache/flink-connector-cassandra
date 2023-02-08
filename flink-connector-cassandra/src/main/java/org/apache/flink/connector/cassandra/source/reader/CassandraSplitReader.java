@@ -25,7 +25,6 @@ import org.apache.flink.connector.base.source.reader.splitreader.SplitReader;
 import org.apache.flink.connector.base.source.reader.splitreader.SplitsChange;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplitState;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.ColumnMetadata;
@@ -68,12 +67,12 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
     private final int maxRecordsPerSplit;
 
     public CassandraSplitReader(
-            ClusterBuilder clusterBuilder, String query, int maxRecordsPerSplit) {
+            Cluster cluster, Session session, String query, int maxRecordsPerSplit) {
         this.unprocessedSplits = new HashSet<>();
         this.query = query;
         this.maxRecordsPerSplit = maxRecordsPerSplit;
-        cluster = clusterBuilder.getCluster();
-        session = cluster.connect();
+        this.cluster = cluster;
+        this.session = session;
     }
 
     @Override
@@ -95,7 +94,6 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
                 break;
             }
             try {
-                // TODO add a test for resume of fetch()
                 if (cassandraSplitState.getResultSet() != null) { // resumed fetch()
                     // add the records already contained in cassandraSplitState#resultSet
                     addRecordsToOutput(null, cassandraSplitState, recordsBySplit);
@@ -236,19 +234,6 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
 
     @Override
     public void close() throws Exception {
-        try {
-            if (session != null) {
-                session.close();
-            }
-        } catch (Exception e) {
-            LOG.error("Error while closing session.", e);
-        }
-        try {
-            if (cluster != null) {
-                cluster.close();
-            }
-        } catch (Exception e) {
-            LOG.error("Error while closing cluster.", e);
-        }
+        // nothing to do as the cluster/session is managed by the SourceReader
     }
 }
