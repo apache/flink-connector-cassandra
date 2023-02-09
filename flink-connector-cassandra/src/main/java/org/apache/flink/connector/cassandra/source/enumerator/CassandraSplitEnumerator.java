@@ -91,8 +91,7 @@ public final class CassandraSplitEnumerator
 
     @Override
     public void addReader(int subtaskId) {
-        LOG.info("Adding reader {} to CassandraSplitEnumerator.", subtaskId);
-        assignUnprocessedSplitToReader(subtaskId);
+        // this source is purely lazy-pull-based, nothing to do upon registration
     }
 
     private void assignUnprocessedSplitToReader(int readerId) {

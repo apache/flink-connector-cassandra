@@ -27,6 +27,7 @@ import java.util.Queue;
 
 /** Sate for {@link CassandraSplitEnumerator} to track the splits yet to assign. */
 public class CassandraEnumeratorState {
+
     private final Queue<CassandraSplit> unassignedSplits;
 
     public CassandraEnumeratorState() {

@@ -24,16 +24,30 @@ import org.apache.flink.streaming.connectors.cassandra.MapperOptions;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
+import com.datastax.driver.mapping.Mapper;
+import com.datastax.driver.mapping.MappingManager;
 
-/** Factory to create {@link CassandraSourceReader}s to allow creating the cluster and the session objects.*/
+/**
+ * Factory to create {@link CassandraSourceReader}s and allow creating the cluster and the session
+ * objects.
+ */
 public class CassandraSourceReaderFactory<OUT> {
-    public CassandraSourceReader<OUT> create
-        (SourceReaderContext context, ClusterBuilder clusterBuilder,
-                Class<OUT> pojoClass,
-                String query, MapperOptions mapperOptions) {
-            Cluster cluster = clusterBuilder.getCluster();
-            Session session = cluster.connect();
-            return new CassandraSourceReader<>(
-                    context, pojoClass, query, mapperOptions, cluster, session);
+    public CassandraSourceReader<OUT> create(
+            SourceReaderContext context,
+            ClusterBuilder clusterBuilder,
+            Class<OUT> pojoClass,
+            String query,
+            MapperOptions mapperOptions) {
+        Cluster cluster = clusterBuilder.getCluster();
+        Session session = cluster.connect();
+        Mapper<OUT> mapper = new MappingManager(session).mapper(pojoClass);
+        if (mapperOptions != null) {
+            Mapper.Option[] optionsArray = mapperOptions.getMapperOptions();
+            if (optionsArray != null) {
+                mapper.setDefaultGetOptions(optionsArray);
+            }
         }
+        return new CassandraSourceReader<>(
+                context, pojoClass, query, mapperOptions, cluster, session, mapper);
     }
+}

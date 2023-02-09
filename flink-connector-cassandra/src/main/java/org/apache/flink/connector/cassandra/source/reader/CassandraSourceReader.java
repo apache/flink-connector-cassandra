@@ -26,13 +26,11 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.base.source.reader.SingleThreadMultiplexSourceReaderBase;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplitState;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
 import org.apache.flink.streaming.connectors.cassandra.MapperOptions;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.mapping.Mapper;
-import com.datastax.driver.mapping.MappingManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,7 +60,8 @@ public class CassandraSourceReader<OUT>
             String query,
             MapperOptions mapperOptions,
             Cluster cluster,
-            Session session) {
+            Session session,
+            Mapper<OUT> mapper) {
         super(
                 () -> {
                     final Configuration configuration = context.getConfiguration();
@@ -73,21 +72,16 @@ public class CassandraSourceReader<OUT>
                     return new CassandraSplitReader(
                             cluster, session, query, configuration.get(maxRecordsPerSplit));
                 },
-                new CassandraRecordEmitter<>(
-                        resultSet -> {
-                            Mapper<OUT> mapper = new MappingManager(session).mapper(pojoClass);
-                            if (mapperOptions != null) {
-                                Mapper.Option[] optionsArray = mapperOptions.getMapperOptions();
-                                if (optionsArray != null) {
-                                    mapper.setDefaultGetOptions(optionsArray);
-                                }
-                            }
-                            return mapper.map(resultSet).one();
-                        }),
+                new CassandraRecordEmitter<>(resultSet -> mapper.map(resultSet).one()),
                 context.getConfiguration(),
                 context);
         this.cluster = cluster;
         this.session = session;
+    }
+
+    @Override
+    public void start() {
+        context.sendSplitRequest();
     }
 
     @Override
