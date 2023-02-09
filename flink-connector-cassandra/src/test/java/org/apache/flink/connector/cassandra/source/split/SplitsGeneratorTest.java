@@ -27,7 +27,7 @@ import static org.apache.flink.connector.cassandra.source.split.SplitsGenerator.
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Tests for {@link SplitsGenerator}. */
-public final class SplitsGeneratorTest {
+class SplitsGeneratorTest {
 
     @Test
     public void testGenerateSplitsMurMur3Partitioner() {

@@ -20,21 +20,26 @@ package org.apache.flink.connector.cassandra.source.enumerator;
 
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 
+import javax.annotation.Nullable;
+
 import java.util.ArrayDeque;
 import java.util.Collection;
 import java.util.Objects;
 import java.util.Queue;
 
-/** Sate for {@link CassandraSplitEnumerator} to track the splits yet to assign. */
+import static org.apache.flink.util.Preconditions.checkNotNull;
+
+/** State for {@link CassandraSplitEnumerator} to track the splits yet to assign. */
 public class CassandraEnumeratorState {
 
     private final Queue<CassandraSplit> unassignedSplits;
 
-    public CassandraEnumeratorState() {
+    CassandraEnumeratorState() {
         this.unassignedSplits = new ArrayDeque<>();
     }
 
-    public CassandraEnumeratorState(Queue<CassandraSplit> unassignedSplits) {
+    CassandraEnumeratorState(Queue<CassandraSplit> unassignedSplits) {
+        checkNotNull(unassignedSplits);
         this.unassignedSplits = unassignedSplits;
     }
 
@@ -46,7 +51,7 @@ public class CassandraEnumeratorState {
         unassignedSplits.addAll(newSplits);
     }
 
-    public CassandraSplit getASplit() {
+    public @Nullable CassandraSplit getASplit() {
         return unassignedSplits.poll();
     }
 

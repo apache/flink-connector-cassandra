@@ -26,7 +26,7 @@ import java.math.BigInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Tests for {@link CassandraSplitSerializer}. */
-public class CassandraSplitSerializerTest {
+class CassandraSplitSerializerTest {
 
     @Test
     public void testSerdeRoundtrip() throws IOException {

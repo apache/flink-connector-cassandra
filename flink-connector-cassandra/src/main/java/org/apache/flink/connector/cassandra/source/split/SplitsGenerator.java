@@ -46,7 +46,7 @@ public final class SplitsGenerator {
      * @param numSplits requested number of splits
      * @return list containing {@code numSplits} CassandraSplits.
      */
-    public List<CassandraSplit> generateSplits(long numSplits) {
+    public List<CassandraSplit> generateSplits(int numSplits) {
         if (numSplits == 1) {
             return Collections.singletonList(
                     new CassandraSplit(partitioner.minToken(), partitioner.maxToken()));
@@ -55,14 +55,14 @@ public final class SplitsGenerator {
         BigInteger splitSize =
                 (partitioner.ringSize()).divide(new BigInteger(String.valueOf(numSplits)));
 
-        BigInteger startToken, endToken = partitioner.minToken();
+        BigInteger startToken = partitioner.minToken();
         for (int splitCount = 1; splitCount <= numSplits; splitCount++) {
-            startToken = endToken;
-            endToken = startToken.add(splitSize);
+            BigInteger endToken = startToken.add(splitSize);
             if (splitCount == numSplits) {
                 endToken = partitioner.maxToken();
             }
             splits.add(new CassandraSplit(startToken, endToken));
+            startToken = endToken;
         }
         LOG.debug("Generated {} splits : {}", splits.size(), splits);
         return splits;

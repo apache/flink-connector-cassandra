@@ -30,7 +30,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Tests for {@link CassandraEnumeratorStateSerializer}. */
-public class CassandraEnumeratorStateSerializerTest {
+class CassandraEnumeratorStateSerializerTest {
 
     @Test
     public void testSerdeRoundtrip() throws Exception {
