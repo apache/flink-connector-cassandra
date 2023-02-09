@@ -57,7 +57,22 @@ public final class CassandraSplitEnumerator
 
     @Override
     public void handleSplitRequest(int subtaskId, @Nullable String requesterHostname) {
-        assignUnprocessedSplitToReader(subtaskId);
+        checkReaderRegistered(subtaskId);
+        final CassandraSplit cassandraSplit = state.getASplit();
+        if (cassandraSplit != null) {
+            LOG.info("Assigning splits to reader {}", subtaskId);
+            enumeratorContext.assignSplit(cassandraSplit, subtaskId);
+        } else {
+            LOG.info(
+                    "No split assigned to reader {} because the enumerator has no unassigned split left",
+                    subtaskId);
+        }
+        if (!state.hasMoreSplits()) {
+            LOG.info(
+                    "No more CassandraSplits to assign. Sending NoMoreSplitsEvent to reader {}.",
+                    subtaskId);
+            enumeratorContext.signalNoMoreSplits(subtaskId);
+        }
     }
 
     @Override
@@ -92,25 +107,6 @@ public final class CassandraSplitEnumerator
     @Override
     public void addReader(int subtaskId) {
         // this source is purely lazy-pull-based, nothing to do upon registration
-    }
-
-    private void assignUnprocessedSplitToReader(int readerId) {
-        checkReaderRegistered(readerId);
-        final CassandraSplit cassandraSplit = state.getASplit();
-        if (cassandraSplit != null) {
-            LOG.info("Assigning splits to reader {}", readerId);
-            enumeratorContext.assignSplit(cassandraSplit, readerId);
-        } else {
-            LOG.info(
-                    "No split assigned to reader {} because the enumerator has no unassigned split left",
-                    readerId);
-        }
-        if (!state.hasMoreSplits()) {
-            LOG.info(
-                    "No more CassandraSplits to assign. Sending NoMoreSplitsEvent to reader {}.",
-                    readerId);
-            enumeratorContext.signalNoMoreSplits(readerId);
-        }
     }
 
     private void checkReaderRegistered(int readerId) {
