@@ -78,27 +78,32 @@ public class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
 
     @Disabled("Not a unbounded source")
     @Override
-    public void testSavepoint(
+    public void testSourceMetrics(
             TestEnvironment testEnv,
             DataStreamSourceExternalContext<Pojo> externalContext,
             CheckpointingMode semantic)
             throws Exception {}
+
+    @Disabled("Not a unbounded source")
+    @Override
+    public void testSavepoint(
+            TestEnvironment testEnv,
+            DataStreamSourceExternalContext<Pojo> externalContext,
+            CheckpointingMode semantic) {}
 
     @Disabled("Not a unbounded source")
     @Override
     public void testScaleUp(
             TestEnvironment testEnv,
             DataStreamSourceExternalContext<Pojo> externalContext,
-            CheckpointingMode semantic)
-            throws Exception {}
+            CheckpointingMode semantic) {}
 
     @Disabled("Not a unbounded source")
     @Override
     public void testScaleDown(
             TestEnvironment testEnv,
             DataStreamSourceExternalContext<Pojo> externalContext,
-            CheckpointingMode semantic)
-            throws Exception {}
+            CheckpointingMode semantic) {}
 
     @Disabled("Not a unbounded source")
     @Override
@@ -106,6 +111,5 @@ public class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
             TestEnvironment testEnv,
             DataStreamSourceExternalContext<Pojo> externalContext,
             ClusterControllable controller,
-            CheckpointingMode semantic)
-            throws Exception {}
+            CheckpointingMode semantic) {}
 }
