@@ -22,6 +22,7 @@ import org.apache.flink.connector.cassandra.source.CassandraSource;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -31,84 +32,35 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** tests for query generation and query sanity checks. */
 class CassandraQueryTest {
 
+    private static final Pattern PATTERN = Pattern.compile(CassandraSplitReader.SELECT_REGEXP);
+
     @Test
     public void testKeySpaceTableExtractionRegexp() {
-        final Pattern pattern = Pattern.compile(CassandraSplitReader.SELECT_REGEXP);
-        Matcher matcher;
-        matcher = pattern.matcher("SELECT field FROM keyspace.table where field = value;");
-        assertThat(matcher.matches()).isTrue();
-        assertThat(matcher.group(1)).isEqualTo("keyspace");
-        assertThat(matcher.group(2)).isEqualTo("table");
 
-        matcher = pattern.matcher("SELECT * FROM keyspace.table;");
-        assertThat(matcher.matches()).isTrue();
-        assertThat(matcher.group(1)).isEqualTo("keyspace");
-        assertThat(matcher.group(2)).isEqualTo("table");
+        assertQueryFormatCorrect("SELECT field FROM keyspace.table where field = value;");
+        assertQueryFormatCorrect("SELECT * FROM keyspace.table;");
+        assertQueryFormatCorrect("select field1, field2 from keyspace.table;");
+        assertQueryFormatCorrect("select field1, field2 from keyspace.table LIMIT(1000);");
+        assertQueryFormatCorrect("select field1 from keyspace.table ;");
+        assertQueryFormatCorrect("select field1 from keyspace.table where field1=1;");
 
-        matcher = pattern.matcher("select field1, field2 from keyspace.table;");
-        assertThat(matcher.matches()).isTrue();
-        assertThat(matcher.group(1)).isEqualTo("keyspace");
-        assertThat(matcher.group(2)).isEqualTo("table");
-
-        matcher = pattern.matcher("select field1, field2 from keyspace.table LIMIT(1000);");
-        assertThat(matcher.matches()).isTrue();
-        assertThat(matcher.group(1)).isEqualTo("keyspace");
-        assertThat(matcher.group(2)).isEqualTo("table");
-
-        matcher = pattern.matcher("select field1 from keyspace.table ;");
-        assertThat(matcher.matches()).isTrue();
-        assertThat(matcher.group(1)).isEqualTo("keyspace");
-        assertThat(matcher.group(2)).isEqualTo("table");
-
-        matcher = pattern.matcher("select field1 from keyspace.table where field1=1;");
-        assertThat(matcher.matches()).isTrue();
-        assertThat(matcher.group(1)).isEqualTo("keyspace");
-        assertThat(matcher.group(2)).isEqualTo("table");
-
-        matcher = pattern.matcher("select field1 from table;"); // missing keyspace
-        assertThat(matcher.matches()).isFalse();
-
-        matcher = pattern.matcher("select field1 from keyspace.table"); // missing ";"
-        assertThat(matcher.matches()).isFalse();
+        assertQueryFormatIncorrect("select field1 from table;"); // missing keyspace
+        assertQueryFormatIncorrect("select field1 from keyspace.table"); // missing ";"
     }
 
     @Test
     public void testProhibitedClauses() {
-        assertThatThrownBy(
-                        () ->
-                                CassandraSource.checkQueryValidity(
-                                        "SELECT COUNT(*) from flink.table;"))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Aggregations/OrderBy are not supported");
-        assertThatThrownBy(
-                        () -> CassandraSource.checkQueryValidity("SELECT AVG(*) from flink.table;"))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Aggregations/OrderBy are not supported");
-
-        assertThatThrownBy(
-                        () -> CassandraSource.checkQueryValidity("SELECT MIN(*) from flink.table;"))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Aggregations/OrderBy are not supported");
-        assertThatThrownBy(
-                        () -> CassandraSource.checkQueryValidity("SELECT MAX(*) from flink.table;"))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Aggregations/OrderBy are not supported");
-        assertThatThrownBy(
-                        () -> CassandraSource.checkQueryValidity("SELECT SUM(*) from flink.table;"))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Aggregations/OrderBy are not supported");
-        assertThatThrownBy(
-                        () ->
-                                CassandraSource.checkQueryValidity(
-                                        "SELECT field1, field2 from flink.table ORDER BY field1;"))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Aggregations/OrderBy are not supported");
-        assertThatThrownBy(
-                        () ->
-                                CassandraSource.checkQueryValidity(
-                                        "SELECT field1, field2 from flink.table GROUP BY field1;"))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Aggregations/OrderBy are not supported");
+        Arrays.stream(
+                        new String[] {
+                            "SELECT COUNT(*) from flink.table;",
+                            "SELECT AVG(*) from flink.table;",
+                            "SELECT MIN(*) from flink.table;",
+                            "SELECT MAX(*) from flink.table;",
+                            "SELECT SUM(*) from flink.table;",
+                            "SELECT field1, field2 from flink.table ORDER BY field1;",
+                            "SELECT field1, field2 from flink.table GROUP BY field1;"
+                        })
+                .forEach(CassandraQueryTest::assertProhibitedClauseRejected);
     }
 
     @Test
@@ -136,5 +88,23 @@ class CassandraQueryTest {
         assertThat(outputQuery)
                 .isEqualTo(
                         "SELECT field FROM keyspace.table WHERE (token(field) >= ?) AND (token(field) < ?) LIMIT(1000);");
+    }
+
+    private static void assertQueryFormatIncorrect(String query) {
+        Matcher matcher = PATTERN.matcher(query);
+        assertThat(matcher.matches()).isFalse();
+    }
+
+    private static void assertQueryFormatCorrect(String query) {
+        Matcher matcher = PATTERN.matcher(query);
+        assertThat(matcher.matches()).isTrue();
+        assertThat(matcher.group(1)).isEqualTo("keyspace");
+        assertThat(matcher.group(2)).isEqualTo("table");
+    }
+
+    private static void assertProhibitedClauseRejected(String query) {
+        assertThatThrownBy(() -> CassandraSource.checkQueryValidity(query))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Aggregations/OrderBy are not supported");
     }
 }
