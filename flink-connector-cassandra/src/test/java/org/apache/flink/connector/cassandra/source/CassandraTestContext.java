@@ -38,8 +38,8 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Junit context {@link DataStreamSourceExternalContext} that contains everything related to
- * Cassandra source test cases especially test table management.
+ * Junit {@link DataStreamSourceExternalContext} that contains everything related to Cassandra
+ * source test cases especially test table management.
  */
 public class CassandraTestContext implements DataStreamSourceExternalContext<Pojo> {
 
@@ -88,6 +88,7 @@ public class CassandraTestContext implements DataStreamSourceExternalContext<Poj
 
         return new CassandraSource<>(
                 clusterBuilder,
+                null,
                 Pojo.class,
                 String.format(
                         "SELECT * FROM %s.%s;", CassandraTestEnvironment.KEYSPACE, TABLE_NAME),
@@ -108,7 +109,7 @@ public class CassandraTestContext implements DataStreamSourceExternalContext<Poj
                     }
 
                     @Override
-                    public void close() throws Exception {
+                    public void close() {
                         // nothing to do, cluster/session is shared at the CassandraTestEnvironment
                         // level
                     }
@@ -121,9 +122,8 @@ public class CassandraTestContext implements DataStreamSourceExternalContext<Poj
             TestingSourceSettings sourceSettings, int splitIndex, long seed) {
         List<Pojo> testData = new ArrayList<>(RECORDS_PER_SPLIT);
         // generate RECORDS_PER_SPLIT pojos per split and use splitId as pojo batchIndex so that
-        // pojos are
-        // considered equal when they belong to the same split as requested in implementation
-        // notes.
+        // pojos are considered equal when they belong to the same split
+        // as requested in implementation notes.
         for (int i = 0; i < RECORDS_PER_SPLIT; i++) {
             Pojo pojo = new Pojo(String.valueOf(seed + i), i, splitIndex);
             testData.add(pojo);
@@ -133,7 +133,6 @@ public class CassandraTestContext implements DataStreamSourceExternalContext<Poj
 
     @Override
     public void close() throws Exception {
-        splitDataWriter.close();
         dropTable();
         // NB: cluster/session is shared at the CassandraTestEnvironment level
     }

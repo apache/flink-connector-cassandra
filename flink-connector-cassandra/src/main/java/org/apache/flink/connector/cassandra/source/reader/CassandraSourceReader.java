@@ -20,13 +20,8 @@ package org.apache.flink.connector.cassandra.source.reader;
 
 import org.apache.flink.api.connector.source.SourceReader;
 import org.apache.flink.api.connector.source.SourceReaderContext;
-import org.apache.flink.configuration.ConfigOption;
-import org.apache.flink.configuration.ConfigOptions;
-import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.base.source.reader.SingleThreadMultiplexSourceReaderBase;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
-import org.apache.flink.connector.cassandra.source.split.CassandraSplitState;
-import org.apache.flink.streaming.connectors.cassandra.MapperOptions;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
@@ -41,13 +36,10 @@ import java.util.Map;
  *
  * @param <OUT> the type of elements produced by the source
  */
-public class CassandraSourceReader<OUT>
+class CassandraSourceReader<OUT>
         extends SingleThreadMultiplexSourceReaderBase<
-                CassandraRow, OUT, CassandraSplit, CassandraSplitState> {
+                CassandraRow, OUT, CassandraSplit, CassandraSplit> {
 
-    private static final String MAX_RECORDS_PER_SPLIT_CONF =
-            "execution.source.max-records-per-split";
-    private static final int MAX_RECORDS_PER_SPLIT_DEFAULT = 1000;
     private static final Logger LOG = LoggerFactory.getLogger(CassandraSourceReader.class);
 
     private final Cluster cluster;
@@ -56,22 +48,14 @@ public class CassandraSourceReader<OUT>
     // created by the factory
     CassandraSourceReader(
             SourceReaderContext context,
-            Class<OUT> pojoClass,
             String query,
-            MapperOptions mapperOptions,
+            String keyspace,
+            String table,
             Cluster cluster,
             Session session,
             Mapper<OUT> mapper) {
         super(
-                () -> {
-                    final Configuration configuration = context.getConfiguration();
-                    ConfigOption<Integer> maxRecordsPerSplit =
-                            ConfigOptions.key(MAX_RECORDS_PER_SPLIT_CONF)
-                                    .intType()
-                                    .defaultValue(MAX_RECORDS_PER_SPLIT_DEFAULT);
-                    return new CassandraSplitReader(
-                            cluster, session, query, configuration.get(maxRecordsPerSplit));
-                },
+                () -> new CassandraSplitReader(cluster, session, query, keyspace, table),
                 new CassandraRecordEmitter<>(resultSet -> mapper.map(resultSet).one()),
                 context.getConfiguration(),
                 context);
@@ -85,18 +69,18 @@ public class CassandraSourceReader<OUT>
     }
 
     @Override
-    protected void onSplitFinished(Map<String, CassandraSplitState> finishedSplitIds) {
+    protected void onSplitFinished(Map<String, CassandraSplit> finishedSplitIds) {
         context.sendSplitRequest();
     }
 
     @Override
-    protected CassandraSplitState initializedState(CassandraSplit cassandraSplit) {
-        return new CassandraSplitState(cassandraSplit);
+    protected CassandraSplit initializedState(CassandraSplit cassandraSplit) {
+        return cassandraSplit;
     }
 
     @Override
-    protected CassandraSplit toSplitType(String splitId, CassandraSplitState cassandraSplitState) {
-        return cassandraSplitState.getCassandraSplit();
+    protected CassandraSplit toSplitType(String splitId, CassandraSplit cassandraSplit) {
+        return cassandraSplit;
     }
 
     @Override

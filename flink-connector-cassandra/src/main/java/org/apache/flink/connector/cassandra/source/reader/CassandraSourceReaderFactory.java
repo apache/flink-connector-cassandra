@@ -28,7 +28,7 @@ import com.datastax.driver.mapping.Mapper;
 import com.datastax.driver.mapping.MappingManager;
 
 /**
- * Factory to create {@link CassandraSourceReader}s and allow creating the cluster and the session
+ * Factory to create {@link CassandraSourceReader}s and allow sharing the cluster and the session
  * objects.
  */
 public class CassandraSourceReaderFactory<OUT> {
@@ -37,6 +37,8 @@ public class CassandraSourceReaderFactory<OUT> {
             ClusterBuilder clusterBuilder,
             Class<OUT> pojoClass,
             String query,
+            String keyspace,
+            String table,
             MapperOptions mapperOptions) {
         Cluster cluster = clusterBuilder.getCluster();
         Session session = cluster.connect();
@@ -48,6 +50,6 @@ public class CassandraSourceReaderFactory<OUT> {
             }
         }
         return new CassandraSourceReader<>(
-                context, pojoClass, query, mapperOptions, cluster, session, mapper);
+                context, query, keyspace, table, cluster, session, mapper);
     }
 }

@@ -23,15 +23,14 @@ import org.apache.flink.connector.base.source.reader.RecordsBySplits;
 import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
 import org.apache.flink.connector.base.source.reader.splitreader.SplitReader;
 import org.apache.flink.connector.base.source.reader.splitreader.SplitsChange;
+import org.apache.flink.connector.cassandra.source.CassandraSource;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
-import org.apache.flink.connector.cassandra.source.split.CassandraSplitState;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.ColumnMetadata;
 import com.datastax.driver.core.Metadata;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.Row;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.Token;
 import org.slf4j.Logger;
@@ -51,26 +50,26 @@ import java.util.stream.Collectors;
 /**
  * {@link SplitReader} for Cassandra source. This class is responsible for fetching the records as
  * {@link CassandraRow}s. For that, it executes a range query (query that outputs records belonging
- * to Cassandra token range) based on the user specified query. This class manages the Cassandra
- * cluster and session.
+ * to Cassandra token range) based on the user specified query.
  */
-public class CassandraSplitReader implements SplitReader<CassandraRow, CassandraSplit> {
+class CassandraSplitReader implements SplitReader<CassandraRow, CassandraSplit> {
 
     private static final Logger LOG = LoggerFactory.getLogger(CassandraSplitReader.class);
-    public static final String SELECT_REGEXP = "(?i)select .+ from (\\w+)\\.(\\w+).*;$";
 
     private final Cluster cluster;
     private final Session session;
-    private final Set<CassandraSplitState> unprocessedSplits;
+    private final Set<CassandraSplit> unprocessedSplits;
     private final AtomicBoolean wakeup = new AtomicBoolean(false);
     private final String query;
-    private final int maxRecordsPerSplit;
+    private final String keyspace;
+    private final String table;
 
     public CassandraSplitReader(
-            Cluster cluster, Session session, String query, int maxRecordsPerSplit) {
+            Cluster cluster, Session session, String query, String keyspace, String table) {
         this.unprocessedSplits = new HashSet<>();
         this.query = query;
-        this.maxRecordsPerSplit = maxRecordsPerSplit;
+        this.keyspace = keyspace;
+        this.table = table;
         this.cluster = cluster;
         this.session = session;
     }
@@ -87,37 +86,31 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
 
         // Set wakeup to false to start consuming
         wakeup.compareAndSet(true, false);
-        for (CassandraSplitState cassandraSplitState : unprocessedSplits) {
+        for (CassandraSplit cassandraSplit : unprocessedSplits) {
             // allow to interrupt the reading of splits especially the blocking session.execute()
-            // call) as requested in the API
+            // call as requested in the API
             if (wakeup.get()) {
                 break;
             }
             try {
-                if (cassandraSplitState.getResultSet() != null) { // resumed fetch()
-                    // add the records already contained in cassandraSplitState#resultSet
-                    addRecordsToOutput(null, cassandraSplitState, recordsBySplit);
-                } else { // first time we read this split
-                    Token startToken =
-                            clusterMetadata.newToken(
-                                    cassandraSplitState.getRingRangeStart().toString());
-                    Token endToken =
-                            clusterMetadata.newToken(
-                                    cassandraSplitState.getRingRangeEnd().toString());
-                    final ResultSet resultSet =
-                            session.execute(
-                                    preparedStatement
-                                            .bind()
-                                            .setToken(0, startToken)
-                                            .setToken(1, endToken));
-                    addRecordsToOutput(resultSet, cassandraSplitState, recordsBySplit);
-                }
-                final String cassandraSplitId = cassandraSplitState.splitId();
+                Token startToken =
+                        clusterMetadata.newToken(cassandraSplit.getRingRangeStart().toString());
+                Token endToken =
+                        clusterMetadata.newToken(cassandraSplit.getRingRangeEnd().toString());
+                final ResultSet resultSet =
+                        session.execute(
+                                preparedStatement
+                                        .bind()
+                                        .setToken(0, startToken)
+                                        .setToken(1, endToken));
+                // add all the records of the split to the output (in memory).
+                // It is safe because each split has a configurable maximum memory size
+                addRecordsToOutput(resultSet, cassandraSplit, recordsBySplit);
                 // add the already read (or even empty) split to finished splits
-                finishedSplits.add(cassandraSplitId);
+                finishedSplits.add(cassandraSplit.splitId());
                 // for reentrant calls: if fetch is restarted,
                 // do not reprocess the already processed splits
-                unprocessedSplits.remove(cassandraSplitState);
+                unprocessedSplits.remove(cassandraSplit);
             } catch (Exception ex) {
                 LOG.error("Error while reading split ", ex);
             }
@@ -126,15 +119,6 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
     }
 
     private String getPartitionKey(Metadata clusterMetadata) {
-        Matcher queryMatcher = Pattern.compile(SELECT_REGEXP).matcher(query);
-        if (!queryMatcher.matches()) {
-            throw new IllegalStateException(
-                    String.format(
-                            "Failed to extract keyspace and table out of the provided query: %s",
-                            query));
-        }
-        String keyspace = queryMatcher.group(1);
-        String table = queryMatcher.group(2);
         return clusterMetadata.getKeyspace(keyspace).getTable(table).getPartitionKey().stream()
                 .map(ColumnMetadata::getName)
                 .collect(Collectors.joining(","));
@@ -147,9 +131,7 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
 
     @Override
     public void handleSplitsChanges(SplitsChange<CassandraSplit> splitsChanges) {
-        for (CassandraSplit cassandraSplit : splitsChanges.splits()) {
-            unprocessedSplits.add(new CassandraSplitState(cassandraSplit));
-        }
+        unprocessedSplits.addAll(splitsChanges.splits());
     }
 
     /**
@@ -174,12 +156,11 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
      */
     @VisibleForTesting
     static String generateRangeQuery(String query, String partitionKey) {
-        Matcher queryMatcher = Pattern.compile(SELECT_REGEXP).matcher(query);
+        Matcher queryMatcher = Pattern.compile(CassandraSource.SELECT_REGEXP).matcher(query);
         if (!queryMatcher.matches()) {
             throw new IllegalStateException(
                     String.format(
-                            "Failed to extract keyspace and table out of the provided query: %s",
-                            query));
+                            "Failed to generate range query out of the provided query: %s", query));
         }
         final int whereIndex = query.toLowerCase().indexOf("where");
         int insertionPoint;
@@ -206,30 +187,16 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
     /**
      * This method populates the {@code Map<String, Collection<CassandraRow>> recordsBySplit} map
      * that is used to create the {@link RecordsBySplits} that are output by the fetch method. It
-     * modifies its {@code output} parameter and updates {@link CassandraSplitState} to keep track
-     * of the output.
+     * modifies its {@code output} parameter.
      */
     private void addRecordsToOutput(
             ResultSet resultSet,
-            CassandraSplitState cassandraSplitState,
+            CassandraSplit cassandraSplit,
             Map<String, Collection<CassandraRow>> output) {
-        ResultSet finalResultSet;
-        if (resultSet == null) { // resumed fetch()
-            assert cassandraSplitState.getResultSet() != null;
-            finalResultSet = cassandraSplitState.getResultSet();
-        } else { // output the result of the query
-            finalResultSet = resultSet;
-            // keep track of where we are in the resultset
-            cassandraSplitState.setResultSet(finalResultSet);
-        }
-        // output the rows in the ResultSet until no more rows or maxRecordsPerSplit is met
-        int nbRecords = 0;
-        while (nbRecords < maxRecordsPerSplit && !finalResultSet.isExhausted()) {
-            final Row row = finalResultSet.one();
-            output.computeIfAbsent(cassandraSplitState.splitId(), id -> new ArrayList<>())
-                    .add(new CassandraRow(row, finalResultSet.getExecutionInfo()));
-            nbRecords++;
-        }
+        resultSet.forEach(
+                row ->
+                        output.computeIfAbsent(cassandraSplit.splitId(), id -> new ArrayList<>())
+                                .add(new CassandraRow(row, resultSet.getExecutionInfo())));
     }
 
     @Override

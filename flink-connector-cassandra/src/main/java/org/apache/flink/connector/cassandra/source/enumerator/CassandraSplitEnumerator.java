@@ -26,6 +26,7 @@ import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Metadata;
+import com.datastax.driver.core.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,14 +46,25 @@ public final class CassandraSplitEnumerator
     private final SplitEnumeratorContext<CassandraSplit> enumeratorContext;
     private final CassandraEnumeratorState state;
     private final Cluster cluster;
+    private final Long maxSplitMemorySize;
+    private final Session session;
+    private final String keyspace;
+    private final String table;
 
     public CassandraSplitEnumerator(
             SplitEnumeratorContext<CassandraSplit> enumeratorContext,
             CassandraEnumeratorState state,
-            ClusterBuilder clusterBuilder) {
+            ClusterBuilder clusterBuilder,
+            Long maxSplitMemorySize,
+            String keyspace,
+            String table) {
         this.enumeratorContext = enumeratorContext;
         this.state = state == null ? new CassandraEnumeratorState() : state /* snapshot restore*/;
         this.cluster = clusterBuilder.getCluster();
+        this.maxSplitMemorySize = maxSplitMemorySize;
+        this.session = cluster.newSession();
+        this.keyspace = keyspace;
+        this.table = table;
     }
 
     @Override
@@ -64,12 +76,7 @@ public final class CassandraSplitEnumerator
             enumeratorContext.assignSplit(cassandraSplit, subtaskId);
         } else {
             LOG.info(
-                    "No split assigned to reader {} because the enumerator has no unassigned split left",
-                    subtaskId);
-        }
-        if (!state.hasMoreSplits()) {
-            LOG.info(
-                    "No more CassandraSplits to assign. Sending NoMoreSplitsEvent to reader {}.",
+                    "No split assigned to reader {} because the enumerator has no unassigned split left. Sending NoMoreSplitsEvent to reader",
                     subtaskId);
             enumeratorContext.signalNoMoreSplits(subtaskId);
         }
@@ -88,14 +95,16 @@ public final class CassandraSplitEnumerator
     }
 
     private List<CassandraSplit> discoverSplits() {
-        final int numberOfSplits = enumeratorContext.currentParallelism();
+        final int parallelism = enumeratorContext.currentParallelism();
         final Metadata clusterMetadata = cluster.getMetadata();
         final String partitionerName = clusterMetadata.getPartitioner();
         final SplitsGenerator.CassandraPartitioner partitioner =
-                partitionerName.contains(MURMUR3PARTITIONER.className())
+                partitionerName.contains(MURMUR3PARTITIONER.getClassName())
                         ? MURMUR3PARTITIONER
                         : RANDOMPARTITIONER;
-        return new SplitsGenerator(partitioner).generateSplits(numberOfSplits);
+        return new SplitsGenerator(
+                        partitioner, session, keyspace, table, parallelism, maxSplitMemorySize)
+                .generateSplits();
     }
 
     @Override
@@ -123,6 +132,19 @@ public final class CassandraSplitEnumerator
 
     @Override
     public void close() throws IOException {
-        cluster.close();
+        try {
+            if (session != null) {
+                session.close();
+            }
+        } catch (Exception e) {
+            LOG.error("Error while closing session.", e);
+        }
+        try {
+            if (cluster != null) {
+                cluster.close();
+            }
+        } catch (Exception e) {
+            LOG.error("Error while closing cluster.", e);
+        }
     }
 }

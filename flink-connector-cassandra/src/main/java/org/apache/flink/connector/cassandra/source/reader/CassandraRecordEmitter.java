@@ -20,7 +20,7 @@ package org.apache.flink.connector.cassandra.source.reader;
 
 import org.apache.flink.api.connector.source.SourceOutput;
 import org.apache.flink.connector.base.source.reader.RecordEmitter;
-import org.apache.flink.connector.cassandra.source.split.CassandraSplitState;
+import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 
 import com.datastax.driver.core.ColumnDefinitions;
 import com.datastax.driver.core.ExecutionInfo;
@@ -41,8 +41,7 @@ import java.util.function.Function;
  *
  * @param <OUT> type of POJO record to output
  */
-public class CassandraRecordEmitter<OUT>
-        implements RecordEmitter<CassandraRow, OUT, CassandraSplitState> {
+class CassandraRecordEmitter<OUT> implements RecordEmitter<CassandraRow, OUT, CassandraSplit> {
 
     private final Function<ResultSet, OUT> map;
 
@@ -52,9 +51,7 @@ public class CassandraRecordEmitter<OUT>
 
     @Override
     public void emitRecord(
-            CassandraRow cassandraRow,
-            SourceOutput<OUT> output,
-            CassandraSplitState cassandraSplitState) {
+            CassandraRow cassandraRow, SourceOutput<OUT> output, CassandraSplit cassandraSplit) {
         final Row row = cassandraRow.getRow();
         // Mapping from a row to a Class<OUT> is a complex operation involving reflection API.
         // It is better to use Cassandra mapper for it.

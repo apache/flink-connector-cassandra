@@ -27,39 +27,40 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** tests for query generation and query sanity checks. */
 class CassandraQueryTest {
 
-    private static final Pattern PATTERN = Pattern.compile(CassandraSplitReader.SELECT_REGEXP);
+    private static final Pattern SELECT_PATTERN = Pattern.compile(CassandraSource.SELECT_REGEXP);
 
     @Test
     public void testKeySpaceTableExtractionRegexp() {
+        Arrays.asList(
+                        "select field FROM keyspace.table where field = value;",
+                        "select * FROM keyspace.table;",
+                        "select field1, field2 from keyspace.table;",
+                        "select field1, field2 from keyspace.table LIMIT(1000);",
+                        "select field1 from keyspace.table ;",
+                        "select field1 from keyspace.table where field1=1;")
+                .forEach(CassandraQueryTest::assertQueryFormatCorrect);
 
-        assertQueryFormatCorrect("SELECT field FROM keyspace.table where field = value;");
-        assertQueryFormatCorrect("SELECT * FROM keyspace.table;");
-        assertQueryFormatCorrect("select field1, field2 from keyspace.table;");
-        assertQueryFormatCorrect("select field1, field2 from keyspace.table LIMIT(1000);");
-        assertQueryFormatCorrect("select field1 from keyspace.table ;");
-        assertQueryFormatCorrect("select field1 from keyspace.table where field1=1;");
-
-        assertQueryFormatIncorrect("select field1 from table;"); // missing keyspace
-        assertQueryFormatIncorrect("select field1 from keyspace.table"); // missing ";"
+        Arrays.asList(
+                        "select field1 from table;", // missing keyspace
+                        "select field1 from keyspace.table" // missing ";"
+                        )
+                .forEach(CassandraQueryTest::assertQueryFormatIncorrect);
     }
 
     @Test
     public void testProhibitedClauses() {
-        Arrays.stream(
-                        new String[] {
-                            "SELECT COUNT(*) from flink.table;",
-                            "SELECT AVG(*) from flink.table;",
-                            "SELECT MIN(*) from flink.table;",
-                            "SELECT MAX(*) from flink.table;",
-                            "SELECT SUM(*) from flink.table;",
-                            "SELECT field1, field2 from flink.table ORDER BY field1;",
-                            "SELECT field1, field2 from flink.table GROUP BY field1;"
-                        })
+        Arrays.asList(
+                        "SELECT COUNT(*) from flink.table;",
+                        "SELECT AVG(*) from flink.table;",
+                        "SELECT MIN(*) from flink.table;",
+                        "SELECT MAX(*) from flink.table;",
+                        "SELECT SUM(*) from flink.table;",
+                        "SELECT field1, field2 from flink.table ORDER BY field1;",
+                        "SELECT field1, field2 from flink.table GROUP BY field1;")
                 .forEach(CassandraQueryTest::assertProhibitedClauseRejected);
     }
 
@@ -91,20 +92,17 @@ class CassandraQueryTest {
     }
 
     private static void assertQueryFormatIncorrect(String query) {
-        Matcher matcher = PATTERN.matcher(query);
-        assertThat(matcher.matches()).isFalse();
+        assertThat(query.matches(CassandraSource.SELECT_REGEXP)).isFalse();
     }
 
     private static void assertQueryFormatCorrect(String query) {
-        Matcher matcher = PATTERN.matcher(query);
+        Matcher matcher = SELECT_PATTERN.matcher(query);
         assertThat(matcher.matches()).isTrue();
         assertThat(matcher.group(1)).isEqualTo("keyspace");
         assertThat(matcher.group(2)).isEqualTo("table");
     }
 
     private static void assertProhibitedClauseRejected(String query) {
-        assertThatThrownBy(() -> CassandraSource.checkQueryValidity(query))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Aggregations/OrderBy are not supported");
+        assertThat(query.matches(CassandraSource.CQL_PROHIBITED_CLAUSES_REGEXP)).isTrue();
     }
 }

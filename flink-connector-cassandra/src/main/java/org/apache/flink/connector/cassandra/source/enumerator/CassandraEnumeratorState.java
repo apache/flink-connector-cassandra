@@ -55,10 +55,6 @@ public class CassandraEnumeratorState {
         return unassignedSplits.poll();
     }
 
-    boolean hasMoreSplits() {
-        return unassignedSplits.size() != 0;
-    }
-
     @Override
     public boolean equals(Object o) {
         if (this == o) {

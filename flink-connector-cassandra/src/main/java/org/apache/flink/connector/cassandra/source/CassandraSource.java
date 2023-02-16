@@ -20,7 +20,6 @@ package org.apache.flink.connector.cassandra.source;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.source.Boundedness;
@@ -35,12 +34,16 @@ import org.apache.flink.connector.cassandra.source.enumerator.CassandraEnumerato
 import org.apache.flink.connector.cassandra.source.enumerator.CassandraEnumeratorStateSerializer;
 import org.apache.flink.connector.cassandra.source.enumerator.CassandraSplitEnumerator;
 import org.apache.flink.connector.cassandra.source.reader.CassandraSourceReaderFactory;
-import org.apache.flink.connector.cassandra.source.reader.CassandraSplitReader;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplitSerializer;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
 import org.apache.flink.streaming.connectors.cassandra.MapperOptions;
+
+import javax.annotation.Nullable;
+
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -67,7 +70,9 @@ import static org.apache.flink.util.Preconditions.checkState;
  *                   .build();
  *   }
  * };
+ * long maxSplitMemorySize = ... //optional max split size in bytes. If not set, maxSplitMemorySize = tableSize / parallelism
  * Source cassandraSource = new CassandraSource(clusterBuilder,
+ *                                              maxSplitMemorySize,
  *                                              Pojo.class,
  *                                              "select ... from KEYSPACE.TABLE ...;",
  *                                              () -> new Mapper.Option[] {Mapper.Option.saveNullFields(true)});
@@ -80,13 +85,18 @@ import static org.apache.flink.util.Preconditions.checkState;
 public class CassandraSource<OUT>
         implements Source<OUT, CassandraSplit, CassandraEnumeratorState>, ResultTypeQueryable<OUT> {
 
-    public static final String CQL_PROHIBITTED_CLAUSES_REGEXP =
+    public static final String CQL_PROHIBITED_CLAUSES_REGEXP =
             "(?i).*(AVG|COUNT|MIN|MAX|SUM|ORDER|GROUP BY).*";
+    public static final String SELECT_REGEXP = "(?i)select .+ from (\\w+)\\.(\\w+).*;$";
+
     private static final long serialVersionUID = 1L;
 
     private final ClusterBuilder clusterBuilder;
+    @Nullable private final Long maxSplitMemorySize;
     private final Class<OUT> pojoClass;
     private final String query;
+    private final String keyspace;
+    private final String table;
     private final MapperOptions mapperOptions;
 
     public CassandraSource(
@@ -94,13 +104,36 @@ public class CassandraSource<OUT>
             Class<OUT> pojoClass,
             String query,
             MapperOptions mapperOptions) {
+        this(clusterBuilder, null, pojoClass, query, mapperOptions);
+    }
+
+    public CassandraSource(
+            ClusterBuilder clusterBuilder,
+            Long maxSplitMemorySize,
+            Class<OUT> pojoClass,
+            String query,
+            MapperOptions mapperOptions) {
         checkNotNull(clusterBuilder, "ClusterBuilder required but not provided");
+        checkState(
+                maxSplitMemorySize == null || maxSplitMemorySize > 0,
+                "Max split size in bytes provided but set to an invalid value {}",
+                maxSplitMemorySize);
         checkNotNull(pojoClass, "POJO class required but not provided");
-        checkQueryValidity(query);
+        checkNotNull(query, "query required but not provided");
+        final Matcher queryMatcher = Pattern.compile(SELECT_REGEXP).matcher(query);
+        checkState(
+                queryMatcher.matches(),
+                "query must be of the form select ... from keyspace.table ...;");
+        this.query = query;
+        keyspace = queryMatcher.group(1);
+        table = queryMatcher.group(2);
+        checkState(
+                !query.matches(CQL_PROHIBITED_CLAUSES_REGEXP),
+                "Aggregations/OrderBy are not supported because the query is executed on subsets/partitions of the input table");
         this.clusterBuilder = clusterBuilder;
+        this.maxSplitMemorySize = maxSplitMemorySize;
         ClosureCleaner.clean(clusterBuilder, ExecutionConfig.ClosureCleanerLevel.RECURSIVE, true);
         this.pojoClass = pojoClass;
-        this.query = query;
         this.mapperOptions = mapperOptions;
     }
 
@@ -113,14 +146,22 @@ public class CassandraSource<OUT>
     @Override
     public SourceReader<OUT, CassandraSplit> createReader(SourceReaderContext readerContext) {
         return new CassandraSourceReaderFactory<OUT>()
-                .create(readerContext, clusterBuilder, pojoClass, query, mapperOptions);
+                .create(
+                        readerContext,
+                        clusterBuilder,
+                        pojoClass,
+                        query,
+                        keyspace,
+                        table,
+                        mapperOptions);
     }
 
     @Internal
     @Override
     public SplitEnumerator<CassandraSplit, CassandraEnumeratorState> createEnumerator(
             SplitEnumeratorContext<CassandraSplit> enumContext) {
-        return new CassandraSplitEnumerator(enumContext, null, clusterBuilder);
+        return new CassandraSplitEnumerator(
+                enumContext, null, clusterBuilder, maxSplitMemorySize, keyspace, table);
     }
 
     @Internal
@@ -128,7 +169,8 @@ public class CassandraSource<OUT>
     public SplitEnumerator<CassandraSplit, CassandraEnumeratorState> restoreEnumerator(
             SplitEnumeratorContext<CassandraSplit> enumContext,
             CassandraEnumeratorState enumCheckpoint) {
-        return new CassandraSplitEnumerator(enumContext, enumCheckpoint, clusterBuilder);
+        return new CassandraSplitEnumerator(
+                enumContext, enumCheckpoint, clusterBuilder, maxSplitMemorySize, keyspace, table);
     }
 
     @Internal
@@ -146,16 +188,5 @@ public class CassandraSource<OUT>
     @Override
     public TypeInformation<OUT> getProducedType() {
         return TypeInformation.of(pojoClass);
-    }
-
-    @VisibleForTesting
-    public static void checkQueryValidity(String query) {
-        checkNotNull(query, "query required but not provided");
-        checkState(
-                query.matches(CassandraSplitReader.SELECT_REGEXP),
-                "query must be of the form select ... from keyspace.table ...;");
-        checkState(
-                !query.matches(CQL_PROHIBITTED_CLAUSES_REGEXP),
-                "Aggregations/OrderBy are not supported because the query is executed on subsets/partitions of the input table");
     }
 }
