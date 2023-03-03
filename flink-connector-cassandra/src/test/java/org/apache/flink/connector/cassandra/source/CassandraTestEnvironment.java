@@ -28,18 +28,19 @@ import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.SocketOptions;
 import com.datastax.driver.core.Statement;
-import com.datastax.driver.core.exceptions.NoHostAvailableException;
 import org.apache.cassandra.service.StorageServiceMBean;
-import org.junit.jupiter.api.io.TempDir;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.CassandraContainer;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.output.OutputFrame;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
-import org.testcontainers.images.builder.Transferable;
+import org.testcontainers.containers.wait.CassandraQueryWaitStrategy;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
+import org.testcontainers.shaded.com.google.common.collect.ImmutableList;
+import org.testcontainers.shaded.com.google.common.collect.ImmutableMap;
 
 import javax.management.JMX;
 import javax.management.MBeanServerConnection;
@@ -48,13 +49,11 @@ import javax.management.remote.JMXConnector;
 import javax.management.remote.JMXConnectorFactory;
 import javax.management.remote.JMXServiceURL;
 
-import java.io.File;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
+import java.net.ServerSocket;
 import java.rmi.server.RMISocketFactory;
-import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -66,18 +65,13 @@ public class CassandraTestEnvironment implements TestResource {
     private static final Logger LOG = LoggerFactory.getLogger(CassandraTestEnvironment.class);
     private static final int CQL_PORT = 9042;
 
-    private static final int MAX_CONNECTION_RETRY = 3;
-    private static final long CONNECTION_RETRY_DELAY = 500L;
     private static final int READ_TIMEOUT_MILLIS = 36000;
 
-    private static final String JMX_URL = "service:jmx:rmi://%s/jndi/rmi://%s:%d/jmxrmi";
+    private static final String JMX_URL = "service:jmx:rmi:///jndi/rmi://%s:%d/jmxrmi";
     private static final String STORAGE_SERVICE_MBEAN =
             "org.apache.cassandra.db:type=StorageService";
-    private static final int JMX_PORT = 7199;
     private static final long FLUSH_MEMTABLES_DELAY =
             30_000L; // updating flushing mem table to SS tables is long, it is the minimum delay.
-    private static final String JMX_USERNAME = "cassandra";
-    private static final String JMX_PASSWORD = "cassandra";
 
     static final String KEYSPACE = "flink";
 
@@ -86,10 +80,6 @@ public class CassandraTestEnvironment implements TestResource {
                     + KEYSPACE
                     + " WITH replication= {'class':'SimpleStrategy', 'replication_factor':1};";
 
-    // official Cassandra image deactivates jmx, to enable it we need to provide authentication and
-    // modify cassandra-env.sh so we created our own image
-    private static final String DOCKER_CASSANDRA_IMAGE_WITH_JMX = "echauchot/cassandra-jmx:4.0.8";
-
     static final String SPLITS_TABLE = "flinksplits";
     private static final String CREATE_SPLITS_TABLE_QUERY =
             "CREATE TABLE " + KEYSPACE + "." + SPLITS_TABLE + " (id int PRIMARY KEY, counter int);";
@@ -97,13 +87,42 @@ public class CassandraTestEnvironment implements TestResource {
             "INSERT INTO " + KEYSPACE + "." + SPLITS_TABLE + " (id, counter)" + " VALUES (%d, %d)";
     private static final int NB_SPLITS_RECORDS = 1000;
 
-    @Container private final CassandraContainer cassandraContainer = createCassandraContainer();
+    @Container
+    private final CassandraContainer cassandraContainer;
+    private final String dockerHostIp;
+    private final int jmxPort;
 
-    @TempDir private File tempDir;
-
-    private static Cluster cluster;
-    private static Session session;
+    private Cluster cluster;
+    private Session session;
     private ClusterBuilder clusterBuilder;
+
+
+    public CassandraTestEnvironment() {
+        try (ServerSocket s = new ServerSocket(0)) {
+            // use fixed free random port for JMX
+            jmxPort = s.getLocalPort();
+            // resolve IP of docker host to establish JMX connection
+            dockerHostIp = InetAddress.getLocalHost().getHostAddress();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+        cassandraContainer =
+                new CassandraContainer("cassandra:4.0.8");
+        // use a fixed port mapping for JMX, it doesn't work well with mapped ports
+        cassandraContainer.setPortBindings(ImmutableList.of(jmxPort + ":" + jmxPort));
+        // more generous timeouts and remote JMX configuration
+        addJavaOpts(
+                cassandraContainer,
+                "-Dcassandra.request_timeout_in_ms=30000",
+                "-Dcassandra.read_request_timeout_in_ms=15000",
+                "-Dcassandra.write_request_timeout_in_ms=6000",
+                "-Dcassandra.jmx.remote.port=" + jmxPort,
+                "-Dcom.sun.management.jmxremote.rmi.port=" + jmxPort,
+                "-Djava.rmi.server.hostname=" + dockerHostIp,
+                "-Dcom.sun.management.jmxremote.host=" + dockerHostIp
+        );
+    }
 
     @Override
     public void startUp() throws Exception {
@@ -115,20 +134,22 @@ public class CassandraTestEnvironment implements TestResource {
         stopEnv();
     }
 
+    private static void addJavaOpts(GenericContainer<?> container, String... opts) {
+        String jvmOpts = container.getEnvMap().getOrDefault("JVM_OPTS", "");
+        container.withEnv("JVM_OPTS", jvmOpts + " " + StringUtils.join(opts, " "));
+    }
+
     private void startEnv() throws Exception {
-        // need to start the container to be able to patch the configuration file inside the
-        // container
-        // CASSANDRA_CONTAINER#start() already contains retrials
+        // configure container start to wait until cassandra is ready to receive queries
+        cassandraContainer.waitingFor(new CassandraQueryWaitStrategy());
+        // start with retrials
         cassandraContainer.start();
         cassandraContainer.followOutput(
                 new Slf4jLogConsumer(LOG),
                 OutputFrame.OutputType.END,
                 OutputFrame.OutputType.STDERR,
                 OutputFrame.OutputType.STDOUT);
-        raiseCassandraRequestsTimeouts();
-        // restart the container so that the new timeouts are taken into account
-        cassandraContainer.stop();
-        cassandraContainer.start();
+
         cluster = cassandraContainer.getCluster();
         clusterBuilder =
                 createBuilderWithConsistencyLevel(
@@ -136,30 +157,7 @@ public class CassandraTestEnvironment implements TestResource {
                         cassandraContainer.getHost(),
                         cassandraContainer.getMappedPort(CQL_PORT));
 
-        int retried = 0;
-        while (retried < MAX_CONNECTION_RETRY) {
-            try {
-                session = cluster.connect();
-                break;
-            } catch (NoHostAvailableException e) {
-                retried++;
-                LOG.debug(
-                        "Connection failed with NoHostAvailableException : retry number {}, will retry to connect within {} ms",
-                        retried,
-                        CONNECTION_RETRY_DELAY);
-                if (retried == MAX_CONNECTION_RETRY) {
-                    throw new RuntimeException(
-                            String.format(
-                                    "Failed to connect to Cassandra cluster after %d retries every %d ms",
-                                    retried, CONNECTION_RETRY_DELAY),
-                            e);
-                }
-                try {
-                    Thread.sleep(CONNECTION_RETRY_DELAY);
-                } catch (InterruptedException ignored) {
-                }
-            }
-        }
+        session = cluster.connect();
         session.execute(requestWithTimeout(CREATE_KEYSPACE_QUERY));
         // create a dedicated table for split size tests (to avoid having to flush with each test)
         insertTestDataForSplitSizeTests();
@@ -208,67 +206,23 @@ public class CassandraTestEnvironment implements TestResource {
         };
     }
 
-    public static CassandraContainer createCassandraContainer() {
-        CassandraContainer cassandra =
-                new CassandraContainer(
-                        DockerImageName.parse(DOCKER_CASSANDRA_IMAGE_WITH_JMX)
-                                .asCompatibleSubstituteFor("cassandra"));
-        cassandra.addExposedPort(JMX_PORT);
-        cassandra.withJmxReporting(true);
-        return cassandra;
-    }
-
-    private void raiseCassandraRequestsTimeouts() {
-        final File tempConfiguration = new File(tempDir, "configuration");
-        try {
-            cassandraContainer.copyFileFromContainer(
-                    "/etc/cassandra/cassandra.yaml", tempConfiguration.getAbsolutePath());
-            String configuration =
-                    new String(
-                            Files.readAllBytes(tempConfiguration.toPath()), StandardCharsets.UTF_8);
-            String patchedConfiguration =
-                    configuration
-                            .replaceAll(
-                                    "request_timeout_in_ms: [0-9]+",
-                                    "request_timeout_in_ms: 30000") // x3 default timeout
-                            .replaceAll(
-                                    "read_request_timeout_in_ms: [0-9]+",
-                                    "read_request_timeout_in_ms: 15000") // x3 default timeout
-                            .replaceAll(
-                                    "write_request_timeout_in_ms: [0-9]+",
-                                    "write_request_timeout_in_ms: 6000"); // x3 default timeout
-            cassandraContainer.copyFileToContainer(
-                    Transferable.of(patchedConfiguration.getBytes(StandardCharsets.UTF_8)),
-                    "/etc/cassandra/cassandra.yaml");
-        } catch (IOException e) {
-            throw new RuntimeException("Unable to open Cassandra configuration file ", e);
-        } finally {
-            tempConfiguration.delete();
-        }
-    }
-
     /**
      * Force the flush of cassandra memTables to SSTables in order to update size_estimates. This
      * flush method is what official Cassandra NoteTool does. It is needed for the tests because we
      * just inserted records, we need to force cassandra to update size_estimates system table.
      */
     void flushMemTables(String table) throws Exception {
-        final String host = cassandraContainer.getHost();
-        final int port = cassandraContainer.getMappedPort(JMX_PORT);
-        JMXServiceURL url = new JMXServiceURL(String.format(JMX_URL, host, host, port));
-        Map<String, Object> env = new HashMap<>();
-        String[] creds = {JMX_USERNAME, JMX_PASSWORD};
-        env.put(JMXConnector.CREDENTIALS, creds);
-        env.put(
+        JMXServiceURL url = new JMXServiceURL(String.format(JMX_URL, dockerHostIp, jmxPort));
+        Map<String, Object> env = ImmutableMap.of(
                 "com.sun.jndi.rmi.factory.socket",
                 RMISocketFactory.getDefaultSocketFactory()); // connection without ssl
-        JMXConnector jmxConnector = JMXConnectorFactory.connect(url, env);
-        MBeanServerConnection mBeanServerConnection = jmxConnector.getMBeanServerConnection();
-        ObjectName objectName = new ObjectName(STORAGE_SERVICE_MBEAN);
-        StorageServiceMBean mBeanProxy =
-                JMX.newMBeanProxy(mBeanServerConnection, objectName, StorageServiceMBean.class);
-        mBeanProxy.forceKeyspaceFlush(KEYSPACE, table);
-        jmxConnector.close();
+        try (JMXConnector jmxConnector = JMXConnectorFactory.connect(url, env)) {
+            MBeanServerConnection mBeanServerConnection = jmxConnector.getMBeanServerConnection();
+            ObjectName objectName = new ObjectName(STORAGE_SERVICE_MBEAN);
+            StorageServiceMBean mBeanProxy =
+                    JMX.newMBeanProxy(mBeanServerConnection, objectName, StorageServiceMBean.class);
+            mBeanProxy.forceKeyspaceFlush(KEYSPACE, table);
+        }
         Thread.sleep(FLUSH_MEMTABLES_DELAY);
     }
 
