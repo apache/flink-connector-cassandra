@@ -63,6 +63,7 @@ import java.util.Map;
 @Testcontainers
 public class CassandraTestEnvironment implements TestResource {
     private static final Logger LOG = LoggerFactory.getLogger(CassandraTestEnvironment.class);
+    private static final String DOCKER_CASSANDRA_IMAGE = "cassandra:4.0.8";
     private static final int CQL_PORT = 9042;
 
     private static final int READ_TIMEOUT_MILLIS = 36000;
@@ -87,15 +88,13 @@ public class CassandraTestEnvironment implements TestResource {
             "INSERT INTO " + KEYSPACE + "." + SPLITS_TABLE + " (id, counter)" + " VALUES (%d, %d)";
     private static final int NB_SPLITS_RECORDS = 1000;
 
-    @Container
-    private final CassandraContainer cassandraContainer;
+    @Container private final CassandraContainer cassandraContainer;
     private final String dockerHostIp;
     private final int jmxPort;
 
     private Cluster cluster;
     private Session session;
     private ClusterBuilder clusterBuilder;
-
 
     public CassandraTestEnvironment() {
         try (ServerSocket s = new ServerSocket(0)) {
@@ -107,8 +106,7 @@ public class CassandraTestEnvironment implements TestResource {
             throw new RuntimeException(e);
         }
 
-        cassandraContainer =
-                new CassandraContainer("cassandra:4.0.8");
+        cassandraContainer = new CassandraContainer(DOCKER_CASSANDRA_IMAGE);
         // use a fixed port mapping for JMX, it doesn't work well with mapped ports
         cassandraContainer.setPortBindings(ImmutableList.of(jmxPort + ":" + jmxPort));
         // more generous timeouts and remote JMX configuration
@@ -120,8 +118,7 @@ public class CassandraTestEnvironment implements TestResource {
                 "-Dcassandra.jmx.remote.port=" + jmxPort,
                 "-Dcom.sun.management.jmxremote.rmi.port=" + jmxPort,
                 "-Djava.rmi.server.hostname=" + dockerHostIp,
-                "-Dcom.sun.management.jmxremote.host=" + dockerHostIp
-        );
+                "-Dcom.sun.management.jmxremote.host=" + dockerHostIp);
     }
 
     @Override
@@ -213,9 +210,10 @@ public class CassandraTestEnvironment implements TestResource {
      */
     void flushMemTables(String table) throws Exception {
         JMXServiceURL url = new JMXServiceURL(String.format(JMX_URL, dockerHostIp, jmxPort));
-        Map<String, Object> env = ImmutableMap.of(
-                "com.sun.jndi.rmi.factory.socket",
-                RMISocketFactory.getDefaultSocketFactory()); // connection without ssl
+        Map<String, Object> env =
+                ImmutableMap.of(
+                        "com.sun.jndi.rmi.factory.socket",
+                        RMISocketFactory.getDefaultSocketFactory()); // connection without ssl
         try (JMXConnector jmxConnector = JMXConnectorFactory.connect(url, env)) {
             MBeanServerConnection mBeanServerConnection = jmxConnector.getMBeanServerConnection();
             ObjectName objectName = new ObjectName(STORAGE_SERVICE_MBEAN);
