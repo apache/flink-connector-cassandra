@@ -28,7 +28,6 @@ import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.SocketOptions;
 import com.datastax.driver.core.Statement;
-import org.apache.cassandra.service.StorageServiceMBean;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,22 +38,8 @@ import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.containers.wait.CassandraQueryWaitStrategy;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.shaded.com.google.common.collect.ImmutableList;
-import org.testcontainers.shaded.com.google.common.collect.ImmutableMap;
 
-import javax.management.JMX;
-import javax.management.MBeanServerConnection;
-import javax.management.ObjectName;
-import javax.management.remote.JMXConnector;
-import javax.management.remote.JMXConnectorFactory;
-import javax.management.remote.JMXServiceURL;
-
-import java.io.IOException;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
-import java.rmi.server.RMISocketFactory;
-import java.util.Map;
 
 /**
  * Junit test environment that contains everything needed at the test suite level: testContainer
@@ -68,9 +53,6 @@ public class CassandraTestEnvironment implements TestResource {
 
     private static final int READ_TIMEOUT_MILLIS = 36000;
 
-    private static final String JMX_URL = "service:jmx:rmi:///jndi/rmi://%s:%d/jmxrmi";
-    private static final String STORAGE_SERVICE_MBEAN =
-            "org.apache.cassandra.db:type=StorageService";
     private static final long FLUSH_MEMTABLES_DELAY =
             30_000L; // updating flushing mem table to SS tables is long, it is the minimum delay.
 
@@ -89,36 +71,19 @@ public class CassandraTestEnvironment implements TestResource {
     private static final int NB_SPLITS_RECORDS = 1000;
 
     @Container private final CassandraContainer cassandraContainer;
-    private final String dockerHostIp;
-    private final int jmxPort;
 
     private Cluster cluster;
     private Session session;
     private ClusterBuilder clusterBuilder;
 
     public CassandraTestEnvironment() {
-        try (ServerSocket s = new ServerSocket(0)) {
-            // use fixed free random port for JMX
-            jmxPort = s.getLocalPort();
-            // resolve IP of docker host to establish JMX connection
-            dockerHostIp = InetAddress.getLocalHost().getHostAddress();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-
         cassandraContainer = new CassandraContainer(DOCKER_CASSANDRA_IMAGE);
-        // use a fixed port mapping for JMX, it doesn't work well with mapped ports
-        cassandraContainer.setPortBindings(ImmutableList.of(jmxPort + ":" + jmxPort));
-        // more generous timeouts and remote JMX configuration
+        // more generous timeouts
         addJavaOpts(
                 cassandraContainer,
                 "-Dcassandra.request_timeout_in_ms=30000",
                 "-Dcassandra.read_request_timeout_in_ms=15000",
-                "-Dcassandra.write_request_timeout_in_ms=6000",
-                "-Dcassandra.jmx.remote.port=" + jmxPort,
-                "-Dcom.sun.management.jmxremote.rmi.port=" + jmxPort,
-                "-Djava.rmi.server.hostname=" + dockerHostIp,
-                "-Dcom.sun.management.jmxremote.host=" + dockerHostIp);
+                "-Dcassandra.write_request_timeout_in_ms=6000");
     }
 
     @Override
@@ -204,23 +169,12 @@ public class CassandraTestEnvironment implements TestResource {
     }
 
     /**
-     * Force the flush of cassandra memTables to SSTables in order to update size_estimates. This
-     * flush method is what official Cassandra NoteTool does. It is needed for the tests because we
-     * just inserted records, we need to force cassandra to update size_estimates system table.
+     * Force the flush of cassandra memTables to SSTables in order to update size_estimates. It is
+     * needed for the tests because we just inserted records, we need to force cassandra to update
+     * size_estimates system table.
      */
     void flushMemTables(String table) throws Exception {
-        JMXServiceURL url = new JMXServiceURL(String.format(JMX_URL, dockerHostIp, jmxPort));
-        Map<String, Object> env =
-                ImmutableMap.of(
-                        "com.sun.jndi.rmi.factory.socket",
-                        RMISocketFactory.getDefaultSocketFactory()); // connection without ssl
-        try (JMXConnector jmxConnector = JMXConnectorFactory.connect(url, env)) {
-            MBeanServerConnection mBeanServerConnection = jmxConnector.getMBeanServerConnection();
-            ObjectName objectName = new ObjectName(STORAGE_SERVICE_MBEAN);
-            StorageServiceMBean mBeanProxy =
-                    JMX.newMBeanProxy(mBeanServerConnection, objectName, StorageServiceMBean.class);
-            mBeanProxy.forceKeyspaceFlush(KEYSPACE, table);
-        }
+        cassandraContainer.execInContainer("nodetool", "flush", KEYSPACE, table);
         Thread.sleep(FLUSH_MEMTABLES_DELAY);
     }
 

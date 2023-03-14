@@ -53,7 +53,6 @@ under the License.
 		<!--driver 3.x works with 3.x and 4.x versions of Cassandra but driver 4.x is a complete refactoring with different API-->
 		<driver.version>3.11.2</driver.version>
 		<guava.version>19.0</guava.version>
-		<palantir-cassandra-jmx-api.version>2.2.18-1.108.0</palantir-cassandra-jmx-api.version>
 	</properties>
 
 	<dependencies>
@@ -189,16 +188,6 @@ under the License.
 		</dependency>
 
 	<!-- Test dependencies -->
-
-		<!-- for JMX MBean invocation to flush mem tables.
-		Alternative is cassandra-all artifact which is huge.
-		palantir-cassandra-jmx-api is ASF v2 -->
-		<dependency>
-			<groupId>com.palantir.cassandra</groupId>
-			<artifactId>palantir-cassandra-jmx-api</artifactId>
-			<version>${palantir-cassandra-jmx-api.version}</version>
-			<scope>test</scope>
-		</dependency>
 
 		<dependency>
 			<groupId>org.assertj</groupId>
