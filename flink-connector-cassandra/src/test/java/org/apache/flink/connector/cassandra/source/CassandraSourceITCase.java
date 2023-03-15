@@ -135,7 +135,7 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
 
     @TestTemplate
     @DisplayName("Test splitting with a too big split size set")
-    public void testGenerateSplitsWithTableSizeLowerThanMaximumSplitSize(
+    public void testGenerateSplitsWithTableUnderSizesMaximumSplitSize(
             TestEnvironment testEnv,
             DataStreamSourceExternalContext<Pojo> externalContext,
             CheckpointingMode semantic)
@@ -159,7 +159,7 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
 
     @TestTemplate
     @DisplayName("Test splitting with a too small split size set")
-    public void testGenerateSplitsWithTooSmallSize(
+    public void testGenerateSplitsWithTableOverSizesMaximumSplitSize(
             TestEnvironment testEnv,
             DataStreamSourceExternalContext<Pojo> externalContext,
             CheckpointingMode semantic)
