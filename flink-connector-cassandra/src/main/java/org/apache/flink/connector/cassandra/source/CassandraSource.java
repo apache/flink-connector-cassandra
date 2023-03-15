@@ -20,6 +20,7 @@ package org.apache.flink.connector.cassandra.source;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.source.Boundedness;
@@ -85,9 +86,10 @@ import static org.apache.flink.util.Preconditions.checkState;
 public class CassandraSource<OUT>
         implements Source<OUT, CassandraSplit, CassandraEnumeratorState>, ResultTypeQueryable<OUT> {
 
-    public static final String CQL_PROHIBITED_CLAUSES_REGEXP =
-            "(?i).*(AVG|COUNT|MIN|MAX|SUM|ORDER|GROUP BY).*";
-    public static final String SELECT_REGEXP = "(?i)select .+ from (\\w+)\\.(\\w+).*;$";
+    public static final Pattern CQL_PROHIBITED_CLAUSES_REGEXP =
+            Pattern.compile("(?i).*(AVG|COUNT|MIN|MAX|SUM|ORDER|GROUP BY).*");
+    public static final Pattern SELECT_REGEXP =
+            Pattern.compile("(?i)select .+ from (\\w+)\\.(\\w+).*;$");
 
     private static final long serialVersionUID = 1L;
 
@@ -120,21 +122,27 @@ public class CassandraSource<OUT>
                 maxSplitMemorySize);
         checkNotNull(pojoClass, "POJO class required but not provided");
         checkNotNull(query, "query required but not provided");
-        final Matcher queryMatcher = Pattern.compile(SELECT_REGEXP).matcher(query);
-        checkState(
-                queryMatcher.matches(),
-                "query must be of the form select ... from keyspace.table ...;");
+        final Matcher queryMatcher = checkQueryValidity(query);
         this.query = query;
         keyspace = queryMatcher.group(1);
         table = queryMatcher.group(2);
-        checkState(
-                !query.matches(CQL_PROHIBITED_CLAUSES_REGEXP),
-                "Aggregations/OrderBy are not supported because the query is executed on subsets/partitions of the input table");
         this.clusterBuilder = clusterBuilder;
         this.maxSplitMemorySize = maxSplitMemorySize;
         ClosureCleaner.clean(clusterBuilder, ExecutionConfig.ClosureCleanerLevel.RECURSIVE, true);
         this.pojoClass = pojoClass;
         this.mapperOptions = mapperOptions;
+    }
+
+    @VisibleForTesting
+    public static Matcher checkQueryValidity(String query) {
+        checkState(
+                !query.matches(CQL_PROHIBITED_CLAUSES_REGEXP.pattern()),
+                "Aggregations/OrderBy are not supported because the query is executed on subsets/partitions of the input table");
+        final Matcher queryMatcher = SELECT_REGEXP.matcher(query);
+        checkState(
+                queryMatcher.matches(),
+                "Query must be of the form select ... from keyspace.table ...;");
+        return queryMatcher;
     }
 
     @Override

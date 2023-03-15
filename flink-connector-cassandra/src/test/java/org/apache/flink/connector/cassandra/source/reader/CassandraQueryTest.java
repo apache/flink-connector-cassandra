@@ -24,14 +24,12 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** tests for query generation and query sanity checks. */
 class CassandraQueryTest {
-
-    private static final Pattern SELECT_PATTERN = Pattern.compile(CassandraSource.SELECT_REGEXP);
 
     @Test
     public void testKeySpaceTableExtractionRegexp() {
@@ -46,6 +44,8 @@ class CassandraQueryTest {
 
         Arrays.asList(
                         "select field1 from table;", // missing keyspace
+                        "select field1 from .table", // undefined keyspace var in a script
+                        "select field1 from keyspace.;", // undefined table var in a script
                         "select field1 from keyspace.table" // missing ";"
                         )
                 .forEach(CassandraQueryTest::assertQueryFormatIncorrect);
@@ -89,20 +89,31 @@ class CassandraQueryTest {
         assertThat(outputQuery)
                 .isEqualTo(
                         "SELECT field FROM keyspace.table WHERE (token(field) >= ?) AND (token(field) < ?) LIMIT(1000);");
+
+        // query with where clause and another trailing clause
+        query = "SELECT field FROM keyspace.table WHERE field = value LIMIT(1000);";
+        outputQuery = CassandraSplitReader.generateRangeQuery(query, "field");
+        assertThat(outputQuery)
+                .isEqualTo(
+                        "SELECT field FROM keyspace.table WHERE (token(field) >= ?) AND (token(field) < ?) AND field = value LIMIT(1000);");
     }
 
     private static void assertQueryFormatIncorrect(String query) {
-        assertThat(query.matches(CassandraSource.SELECT_REGEXP)).isFalse();
+        assertThatThrownBy(() -> CassandraSource.checkQueryValidity(query))
+                .hasMessageContaining(
+                        "Query must be of the form select ... from keyspace.table ...;");
     }
 
     private static void assertQueryFormatCorrect(String query) {
-        Matcher matcher = SELECT_PATTERN.matcher(query);
+        Matcher matcher = CassandraSource.SELECT_REGEXP.matcher(query);
         assertThat(matcher.matches()).isTrue();
         assertThat(matcher.group(1)).isEqualTo("keyspace");
         assertThat(matcher.group(2)).isEqualTo("table");
     }
 
     private static void assertProhibitedClauseRejected(String query) {
-        assertThat(query.matches(CassandraSource.CQL_PROHIBITED_CLAUSES_REGEXP)).isTrue();
+        assertThatThrownBy(() -> CassandraSource.checkQueryValidity(query))
+                .hasMessageContaining(
+                        "Aggregations/OrderBy are not supported because the query is executed on subsets/partitions of the input table");
     }
 }

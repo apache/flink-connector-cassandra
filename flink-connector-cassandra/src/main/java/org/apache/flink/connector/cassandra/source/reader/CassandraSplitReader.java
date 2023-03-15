@@ -44,7 +44,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -156,7 +155,7 @@ class CassandraSplitReader implements SplitReader<CassandraRow, CassandraSplit> 
      */
     @VisibleForTesting
     static String generateRangeQuery(String query, String partitionKey) {
-        Matcher queryMatcher = Pattern.compile(CassandraSource.SELECT_REGEXP).matcher(query);
+        Matcher queryMatcher = CassandraSource.SELECT_REGEXP.matcher(query);
         if (!queryMatcher.matches()) {
             throw new IllegalStateException(
                     String.format(

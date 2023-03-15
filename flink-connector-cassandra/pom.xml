@@ -187,7 +187,7 @@ under the License.
 			<scope>provided</scope>
 		</dependency>
 
-	<!-- Test dependencies -->
+		<!-- Test dependencies -->
 
 		<dependency>
 			<groupId>org.assertj</groupId>
