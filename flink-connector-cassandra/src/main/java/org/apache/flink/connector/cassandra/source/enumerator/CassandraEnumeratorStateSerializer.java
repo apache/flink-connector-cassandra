@@ -38,6 +38,8 @@ public class CassandraEnumeratorStateSerializer
             new CassandraEnumeratorStateSerializer();
     public static final int CURRENT_VERSION = 0;
 
+    private CassandraEnumeratorStateSerializer() {}
+
     @Override
     public int getVersion() {
         return CURRENT_VERSION;

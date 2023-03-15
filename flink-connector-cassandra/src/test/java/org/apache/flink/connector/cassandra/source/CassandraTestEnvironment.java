@@ -53,8 +53,8 @@ public class CassandraTestEnvironment implements TestResource {
 
     private static final int READ_TIMEOUT_MILLIS = 36000;
 
-    private static final long FLUSH_MEMTABLES_DELAY =
-            30_000L; // updating flushing mem table to SS tables is long, it is the minimum delay.
+    // flushing mem table to SS tables is an asynchronous operation that may take a while
+    private static final long FLUSH_MEMTABLES_DELAY = 30_000L;
 
     static final String KEYSPACE = "flink";
 

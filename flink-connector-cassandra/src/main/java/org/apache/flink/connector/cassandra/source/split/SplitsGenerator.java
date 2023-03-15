@@ -92,7 +92,9 @@ public final class SplitsGenerator {
                 numSplits = parallelism;
             }
         } else { // not defined
-            LOG.info("maxSplitMemorySize not set. Creating as many splits as parallelism");
+            LOG.info(
+                    "maxSplitMemorySize not set. Creating as many splits as parallelism ({})",
+                    parallelism);
             numSplits = parallelism;
         }
 

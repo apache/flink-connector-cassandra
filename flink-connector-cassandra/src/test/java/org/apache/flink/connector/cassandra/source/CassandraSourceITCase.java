@@ -118,6 +118,7 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
             CheckpointingMode semantic)
             throws Exception {
         final int parallelism = 2;
+        final long maxSplitMemorySize = 10000L;
         SplitsGenerator generator =
                 new SplitsGenerator(
                         MURMUR3PARTITIONER,
@@ -125,16 +126,16 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
                         CassandraTestEnvironment.KEYSPACE,
                         CassandraTestEnvironment.SPLITS_TABLE,
                         parallelism,
-                        10000L);
-        assertThat(generator.estimateTableSize()).isEqualTo(35840L);
+                        maxSplitMemorySize);
+        long tableSize = generator.estimateTableSize();
+        assertThat(tableSize).isEqualTo(35840L);
         List<CassandraSplit> splits = generator.generateSplits();
-        // nb splits = tableSize / maxSplitMemorySize
-        assertThat(splits.size()).isEqualTo(3);
+        assertThat(splits.size()).isEqualTo(tableSize / maxSplitMemorySize);
     }
 
     @TestTemplate
     @DisplayName("Test splitting with a too big split size set")
-    public void testGenerateSplitsWithTooBigSize(
+    public void testGenerateSplitsWithTableSizeLowerThanMaximumSplitSize(
             TestEnvironment testEnv,
             DataStreamSourceExternalContext<Pojo> externalContext,
             CheckpointingMode semantic)
@@ -148,6 +149,7 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
                         CassandraTestEnvironment.SPLITS_TABLE,
                         parallelism,
                         100_000_000L);
+        // sanity check to ensure that the size estimates were updated in the Cassandra cluster
         assertThat(generator.estimateTableSize()).isEqualTo(35840L);
         List<CassandraSplit> splits = generator.generateSplits();
         // tableSize / maxSplitMemorySize is too little compared to parallelism falling back to
@@ -171,6 +173,7 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
                         CassandraTestEnvironment.SPLITS_TABLE,
                         parallelism,
                         1L);
+        // sanity check to ensure that the size estimates were updated in the Cassandra cluster
         assertThat(generator.estimateTableSize()).isEqualTo(35840L);
         List<CassandraSplit> splits = generator.generateSplits();
 

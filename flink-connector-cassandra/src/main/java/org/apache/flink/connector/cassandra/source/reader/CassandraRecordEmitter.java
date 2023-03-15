@@ -52,79 +52,87 @@ class CassandraRecordEmitter<OUT> implements RecordEmitter<CassandraRow, OUT, Ca
     @Override
     public void emitRecord(
             CassandraRow cassandraRow, SourceOutput<OUT> output, CassandraSplit cassandraSplit) {
-        final Row row = cassandraRow.getRow();
         // Mapping from a row to a Class<OUT> is a complex operation involving reflection API.
         // It is better to use Cassandra mapper for it.
-        // but the mapper takes only a resultSet as input hence forging one containing only the row
-        ResultSet resultSet =
-                new ResultSet() {
-                    @Override
-                    public Row one() {
-                        return row;
-                    }
-
-                    @Override
-                    public ColumnDefinitions getColumnDefinitions() {
-                        return row.getColumnDefinitions();
-                    }
-
-                    @Override
-                    public boolean wasApplied() {
-                        return true;
-                    }
-
-                    @Override
-                    public boolean isExhausted() {
-                        return true;
-                    }
-
-                    @Override
-                    public boolean isFullyFetched() {
-                        return true;
-                    }
-
-                    @Override
-                    public int getAvailableWithoutFetching() {
-                        return 1;
-                    }
-
-                    @Override
-                    public ListenableFuture<ResultSet> fetchMoreResults() {
-                        return Futures.immediateFuture(null);
-                    }
-
-                    @Override
-                    public List<Row> all() {
-                        return Collections.singletonList(row);
-                    }
-
-                    @Override
-                    public Iterator<Row> iterator() {
-                        return new Iterator<Row>() {
-
-                            @Override
-                            public boolean hasNext() {
-                                return true;
-                            }
-
-                            @Override
-                            public Row next() {
-                                return row;
-                            }
-                        };
-                    }
-
-                    @Override
-                    public ExecutionInfo getExecutionInfo() {
-                        return cassandraRow.getExecutionInfo();
-                    }
-
-                    @Override
-                    public List<ExecutionInfo> getAllExecutionInfo() {
-                        return Collections.singletonList(cassandraRow.getExecutionInfo());
-                    }
-                };
+        // But the mapper takes only a resultSet as input hence forging one containing only the Row
+        ResultSet resultSet = new SingleRowResultSet(cassandraRow);
         // output the pojo based on the cassandraRow
         output.collect(map.apply(resultSet));
+    }
+
+    private static class SingleRowResultSet implements ResultSet {
+        private CassandraRow cassandraRow;
+        private Row row;
+
+        private SingleRowResultSet(CassandraRow cassandraRow) {
+            this.cassandraRow = cassandraRow;
+            this.row = cassandraRow.getRow();
+        }
+
+        @Override
+        public Row one() {
+            return row;
+        }
+
+        @Override
+        public ColumnDefinitions getColumnDefinitions() {
+            return row.getColumnDefinitions();
+        }
+
+        @Override
+        public boolean wasApplied() {
+            return true;
+        }
+
+        @Override
+        public boolean isExhausted() {
+            return true;
+        }
+
+        @Override
+        public boolean isFullyFetched() {
+            return true;
+        }
+
+        @Override
+        public int getAvailableWithoutFetching() {
+            return 1;
+        }
+
+        @Override
+        public ListenableFuture<ResultSet> fetchMoreResults() {
+            return Futures.immediateFuture(null);
+        }
+
+        @Override
+        public List<Row> all() {
+            return Collections.singletonList(row);
+        }
+
+        @Override
+        public Iterator<Row> iterator() {
+            return new Iterator<Row>() {
+
+                @Override
+                public boolean hasNext() {
+                    return true;
+                }
+
+                @Override
+                public Row next() {
+                    return row;
+                }
+            };
+        }
+
+        @Override
+        public ExecutionInfo getExecutionInfo() {
+            return cassandraRow.getExecutionInfo();
+        }
+
+        @Override
+        public List<ExecutionInfo> getAllExecutionInfo() {
+            return Collections.singletonList(cassandraRow.getExecutionInfo());
+        }
     }
 }
