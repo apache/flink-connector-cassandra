@@ -53,7 +53,7 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
     @TestEnv MiniClusterTestEnvironment flinkTestEnvironment = new MiniClusterTestEnvironment();
 
     @TestExternalSystem
-    CassandraTestEnvironment cassandraTestEnvironment = new CassandraTestEnvironment();
+    CassandraTestEnvironment cassandraTestEnvironment = new CassandraTestEnvironment(true);
 
     @TestSemantics
     CheckpointingMode[] semantics = new CheckpointingMode[] {CheckpointingMode.EXACTLY_ONCE};

@@ -72,11 +72,13 @@ public class CassandraTestEnvironment implements TestResource {
 
     @Container private final CassandraContainer cassandraContainer;
 
+    boolean insertTestDataForSplitSizeTests;
     private Cluster cluster;
     private Session session;
     private ClusterBuilder clusterBuilder;
 
-    public CassandraTestEnvironment() {
+    public CassandraTestEnvironment(boolean insertTestDataForSplitSizeTests) {
+        this.insertTestDataForSplitSizeTests = insertTestDataForSplitSizeTests;
         cassandraContainer = new CassandraContainer(DOCKER_CASSANDRA_IMAGE);
         // more generous timeouts
         addJavaOpts(
@@ -122,7 +124,9 @@ public class CassandraTestEnvironment implements TestResource {
         session = cluster.connect();
         session.execute(requestWithTimeout(CREATE_KEYSPACE_QUERY));
         // create a dedicated table for split size tests (to avoid having to flush with each test)
-        insertTestDataForSplitSizeTests();
+        if (insertTestDataForSplitSizeTests) {
+            insertTestDataForSplitSizeTests();
+        }
     }
 
     private void insertTestDataForSplitSizeTests() throws Exception {
