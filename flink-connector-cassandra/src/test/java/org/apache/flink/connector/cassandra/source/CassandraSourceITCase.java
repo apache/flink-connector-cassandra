@@ -46,6 +46,7 @@ import static org.apache.flink.connector.cassandra.source.split.SplitsGenerator.
 import static org.apache.flink.connector.cassandra.source.split.SplitsGenerator.CassandraPartitioner.RANDOMPARTITIONER;
 import static org.apache.flink.connector.testframe.utils.ConnectorTestConstants.DEFAULT_COLLECT_DATA_TIMEOUT;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Test for the Cassandra source. */
 class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
@@ -129,6 +130,7 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
                         maxSplitMemorySize);
         long tableSize = generator.estimateTableSize();
         assertThat(tableSize).isEqualTo(35840L);
+        generator.minSplitMemorySize = 5000L;
         List<CassandraSplit> splits = generator.generateSplits();
         assertThat(splits.size()).isEqualTo(tableSize / maxSplitMemorySize);
     }
@@ -152,8 +154,7 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
         // sanity check to ensure that the size estimates were updated in the Cassandra cluster
         assertThat(generator.estimateTableSize()).isEqualTo(35840L);
         List<CassandraSplit> splits = generator.generateSplits();
-        // tableSize / maxSplitMemorySize is too little compared to parallelism falling back to
-        // number of splits = parallelism
+        // tableSize / maxSplitMemorySize is very low falling back to 1 split
         assertThat(splits.size()).isEqualTo(parallelism);
     }
 
@@ -172,14 +173,14 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
                         CassandraTestEnvironment.KEYSPACE,
                         CassandraTestEnvironment.SPLITS_TABLE,
                         parallelism,
-                        1L);
+                        1000L);
         // sanity check to ensure that the size estimates were updated in the Cassandra cluster
         assertThat(generator.estimateTableSize()).isEqualTo(35840L);
-        List<CassandraSplit> splits = generator.generateSplits();
-
-        // tableSize / maxSplitMemorySize is too big compared to parallelism falling back to
-        // number of splits = parallelism
-        assertThat(splits.size()).isEqualTo(parallelism);
+        // we prevent creating too many splits by just preventing a too low maxSplitMemorySize
+        assertThatThrownBy(generator::generateSplits)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("maxSplitMemorySize")
+                .hasMessageContaining("is below minimum");
     }
 
     // overridden to use unordered checks

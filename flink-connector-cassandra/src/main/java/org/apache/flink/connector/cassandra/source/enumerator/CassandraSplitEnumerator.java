@@ -70,6 +70,7 @@ public final class CassandraSplitEnumerator
     @Override
     public void handleSplitRequest(int subtaskId, @Nullable String requesterHostname) {
         checkReaderRegistered(subtaskId);
+        // TODO impl lazy split generation.
         final CassandraSplit cassandraSplit = state.getASplit();
         if (cassandraSplit != null) {
             LOG.info("Assigning splits to reader {}", subtaskId);
@@ -84,8 +85,9 @@ public final class CassandraSplitEnumerator
 
     @Override
     public void start() {
-        // discover the splits and update unprocessed splits and then assign them.
+        // discover the splits and update enumerator unassigned splits.
         // There is only an initial splits discovery, no periodic discovery.
+        // TODO do not discover the splits on start. Rather prepare for splits generation
         enumeratorContext.callAsync(
                 this::discoverSplits,
                 (splits, throwable) -> {

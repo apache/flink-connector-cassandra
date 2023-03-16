@@ -32,6 +32,8 @@ import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.apache.flink.util.Preconditions.checkState;
+
 /**
  * This class generates {@link CassandraSplit}s based on Cassandra cluster partitioner and cluster
  * statistics. It estimates the total size of the table using Cassandra system table
@@ -42,7 +44,7 @@ import java.util.List;
 public final class SplitsGenerator {
 
     private static final Logger LOG = LoggerFactory.getLogger(SplitsGenerator.class);
-    private static final int ACCEPTABLE_NB_SPLIT_PARALLELISM_RATIO = 10;
+    @VisibleForTesting public Long minSplitMemorySize = 10_000_000L; // 10 MB
 
     private final CassandraPartitioner partitioner;
     private final Session session;
@@ -75,39 +77,7 @@ public final class SplitsGenerator {
      * @return list containing {@code numSplits} CassandraSplits.
      */
     public List<CassandraSplit> generateSplits() {
-        long numSplits;
-        if (maxSplitMemorySize != null) {
-            final long estimateTableSize = estimateTableSize();
-            LOG.debug("Estimated table size for table {} is {} bytes", table, estimateTableSize);
-            numSplits = estimateTableSize / maxSplitMemorySize;
-            if (numSplits == 0) { // size estimates unavailable
-                LOG.info(
-                        "Cassandra size estimates are not available for {}.{} table. Creating as many splits as parallelism ({})",
-                        keyspace,
-                        table,
-                        parallelism);
-                numSplits = parallelism;
-            } else if (numSplits < parallelism / ACCEPTABLE_NB_SPLIT_PARALLELISM_RATIO) { // too low
-                LOG.info(
-                        "maxSplitMemorySize set value leads to {} splits with a task parallelism of {}. Creating only one split",
-                        numSplits,
-                        parallelism);
-                numSplits = 1;
-            } else if (numSplits
-                    > (long) parallelism * ACCEPTABLE_NB_SPLIT_PARALLELISM_RATIO) { // too high
-                LOG.info(
-                        "maxSplitMemorySize set value leads to {} splits with a task parallelism of {}. Creating as many splits as parallelism",
-                        numSplits,
-                        parallelism);
-                numSplits = parallelism;
-            }
-        } else { // not defined
-            LOG.info(
-                    "maxSplitMemorySize not set. Creating as many splits as parallelism ({})",
-                    parallelism);
-            numSplits = parallelism;
-        }
-
+        long numSplits = decideOnNumSplits();
         List<CassandraSplit> splits = new ArrayList<>();
         BigInteger increment =
                 (partitioner.ringSize).divide(new BigInteger(String.valueOf(numSplits)));
@@ -123,6 +93,52 @@ public final class SplitsGenerator {
         }
         LOG.debug("Generated {} splits : {}", splits.size(), splits);
         return splits;
+    }
+
+    /**
+     * Determine {@code numSplits} based on the estimation of the target table size and user defined
+     * {@code maxSplitMemorySize}. Add fallbacks when table size is unavailable, too few or too many
+     * splits are calculated.
+     */
+    private long decideOnNumSplits() {
+        long numSplits;
+        if (maxSplitMemorySize != null) {
+            checkState(
+                    maxSplitMemorySize >= minSplitMemorySize,
+                    "Defined maxSplitMemorySize (%s) is below minimum (%s)",
+                    maxSplitMemorySize,
+                    minSplitMemorySize);
+            final long estimateTableSize = estimateTableSize();
+            if (estimateTableSize == 0) { // size estimates unavailable
+                LOG.info(
+                        "Cassandra size estimates are not available for {}.{} table. Creating as many splits as parallelism ({})",
+                        keyspace,
+                        table,
+                        parallelism);
+                numSplits = parallelism;
+            } else {
+                LOG.debug(
+                        "Estimated size for {}.{} table is {} bytes",
+                        keyspace,
+                        table,
+                        estimateTableSize);
+                numSplits =
+                        estimateTableSize / maxSplitMemorySize == 0
+                                ? parallelism // maxSplitMemorySize oversizes estimateTableSize,
+                                // creating as many splits as parallelism
+                                : estimateTableSize / maxSplitMemorySize;
+                LOG.info(
+                        "maxSplitMemorySize set value ({}) leads to the creation of {} splits",
+                        maxSplitMemorySize,
+                        numSplits);
+            }
+        } else { // maxSplitMemorySize not defined
+            LOG.info(
+                    "maxSplitMemorySize not set. Creating as many splits as parallelism ({})",
+                    parallelism);
+            numSplits = parallelism;
+        }
+        return numSplits;
     }
 
     /**
