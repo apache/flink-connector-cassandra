@@ -128,7 +128,8 @@ public final class SplitsGenerator {
         for (TokenRange tokenRange : tokenRanges) {
             size += tokenRange.meanPartitionSize * tokenRange.partitionCount;
         }
-        return Math.round(size / getRingFraction(tokenRanges));
+        final float ringFraction = getRingFraction(tokenRanges);
+        return ringFraction != 0 ? Math.round(size / ringFraction) : 0L;
     }
 
     /**
