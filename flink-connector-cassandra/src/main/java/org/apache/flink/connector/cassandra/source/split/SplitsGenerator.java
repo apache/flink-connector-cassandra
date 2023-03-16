@@ -81,8 +81,17 @@ public final class SplitsGenerator {
             LOG.debug("Estimated table size for table {} is {} bytes", table, estimateTableSize);
             numSplits = estimateTableSize / maxSplitMemorySize;
             if (numSplits == 0) { // size estimates unavailable
+                LOG.info(
+                        "Cassandra size estimates are not available for {}.{} table. Creating as many splits as parallelism ({})",
+                        keyspace,
+                        table,
+                        parallelism);
                 numSplits = parallelism;
             } else if (numSplits < parallelism / ACCEPTABLE_NB_SPLIT_PARALLELISM_RATIO) { // too low
+                LOG.info(
+                        "maxSplitMemorySize set value leads to {} splits with a task parallelism of {}. Creating only one split",
+                        numSplits,
+                        parallelism);
                 numSplits = 1;
             } else if (numSplits
                     > (long) parallelism * ACCEPTABLE_NB_SPLIT_PARALLELISM_RATIO) { // too high
