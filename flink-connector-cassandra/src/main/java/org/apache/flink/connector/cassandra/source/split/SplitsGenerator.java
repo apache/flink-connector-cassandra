@@ -80,11 +80,12 @@ public final class SplitsGenerator {
             final long estimateTableSize = estimateTableSize();
             LOG.debug("Estimated table size for table {} is {} bytes", table, estimateTableSize);
             numSplits = estimateTableSize / maxSplitMemorySize;
-            if (numSplits == 0 // estimateTableSize can be null in some cases (see javadoc)
-                    || numSplits < parallelism / ACCEPTABLE_NB_SPLIT_PARALLELISM_RATIO // too low
-                    || numSplits
-                            > (long) parallelism
-                                    * ACCEPTABLE_NB_SPLIT_PARALLELISM_RATIO) { // too high
+            if (numSplits == 0) { // size estimates unavailable
+                numSplits = parallelism;
+            } else if (numSplits < parallelism / ACCEPTABLE_NB_SPLIT_PARALLELISM_RATIO) { // too low
+                numSplits = 1;
+            } else if (numSplits
+                    > (long) parallelism * ACCEPTABLE_NB_SPLIT_PARALLELISM_RATIO) { // too high
                 LOG.info(
                         "maxSplitMemorySize set value leads to {} splits with a task parallelism of {}. Creating as many splits as parallelism",
                         numSplits,
