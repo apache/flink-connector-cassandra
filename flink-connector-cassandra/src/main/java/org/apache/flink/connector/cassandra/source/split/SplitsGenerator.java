@@ -19,6 +19,7 @@
 package org.apache.flink.connector.cassandra.source.split;
 
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.connector.cassandra.source.enumerator.CassandraEnumeratorState;
 
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
@@ -69,30 +70,17 @@ public final class SplitsGenerator {
     }
 
     /**
-     * Split Cassandra tokens ring into {@link CassandraSplit}s containing each a range of the
-     * Cassandra ring of {@param maxSplitMemorySize}. If {@param maxSplitMemorySize} is not defined,
-     * or is too high or too low compared to the task parallelism, then it generates as many {@link
-     * CassandraSplit}s as the task parallelism.
-     *
-     * @return list containing {@code numSplits} CassandraSplits.
+     * Prepare the {@param CassandraEnumeratorState} for lazy generation of {@link CassandraSplit}s:
+     * determine {@code numSplits} based on estimated target table size and provided {@code
+     * maxSplitMemorySize}.
      */
-    public List<CassandraSplit> generateSplits() {
-        long numSplits = decideOnNumSplits();
-        List<CassandraSplit> splits = new ArrayList<>();
-        BigInteger increment =
-                (partitioner.ringSize).divide(new BigInteger(String.valueOf(numSplits)));
-
-        BigInteger startToken = partitioner.minToken;
-        for (int splitCount = 1; splitCount <= numSplits; splitCount++) {
-            BigInteger endToken = startToken.add(increment);
-            if (splitCount == numSplits) {
-                endToken = partitioner.maxToken;
-            }
-            splits.add(new CassandraSplit(startToken, endToken));
-            startToken = endToken;
-        }
-        LOG.debug("Generated {} splits : {}", splits.size(), splits);
-        return splits;
+    public void prepareSplits(CassandraEnumeratorState state) {
+        //TODO SplitGenerator knows about tokens and CassandraEnumeratorState knows about state. Improve this initialization pattern
+        final long numSplitsToGenerate = decideOnNumSplits();
+        final BigInteger increment =
+                (partitioner.ringSize).divide(new BigInteger(String.valueOf(numSplitsToGenerate)));
+        final BigInteger startToken = partitioner.minToken;
+        state.initializeState(numSplitsToGenerate, increment, startToken, partitioner.maxToken);
     }
 
     /**

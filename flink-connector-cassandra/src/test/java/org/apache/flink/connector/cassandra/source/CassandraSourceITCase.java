@@ -18,6 +18,7 @@
 
 package org.apache.flink.connector.cassandra.source;
 
+import org.apache.flink.connector.cassandra.source.enumerator.CassandraEnumeratorState;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 import org.apache.flink.connector.cassandra.source.split.SplitsGenerator;
 import org.apache.flink.connector.testframe.environment.ClusterControllable;
@@ -63,6 +64,8 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
     CassandraTestContextFactory contextFactory =
             new CassandraTestContextFactory(cassandraTestEnvironment);
 
+    // TODO update split tests with lazy split creation: create an EnumeratorState assert split
+    // size, request several splits and assert on their content
     @TestTemplate
     @DisplayName("Test basic splitting with MURMUR3PARTITIONER (default Cassandra partitioner)")
     public void testGenerateSplitsMurMur3Partitioner(
@@ -78,12 +81,13 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
                         CassandraTestEnvironment.SPLITS_TABLE,
                         parallelism,
                         null);
-        List<CassandraSplit> splits = generator.generateSplits();
+        final CassandraEnumeratorState state = new CassandraEnumeratorState();
+        generator.prepareSplits(state);
 
         // no maxSplitMemorySize specified falling back number of splits = parallelism
-        assertThat(splits.size()).isEqualTo(parallelism);
-        assertThat(splits.get(0).splitId()).isEqualTo("(-9223372036854775808,0)");
-        assertThat(splits.get(1).splitId()).isEqualTo("(0,9223372036854775807)");
+        assertThat(state.getNumSplitsToGenerate()).isEqualTo(parallelism);
+        assertThat(state.getNextSplit()).isEqualTo("(-9223372036854775808,0)");
+        assertThat(state.getNextSplit()).isEqualTo("(0,9223372036854775807)");
     }
 
     @TestTemplate
@@ -101,7 +105,7 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
                         CassandraTestEnvironment.SPLITS_TABLE,
                         parallelism,
                         null);
-        List<CassandraSplit> splits = generator.generateSplits();
+        List<CassandraSplit> splits = generator.prepareSplits();
 
         // no maxSplitMemorySize specified falling back number of splits = parallelism
         assertThat(splits.size()).isEqualTo(parallelism);
@@ -131,7 +135,7 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
         long tableSize = generator.estimateTableSize();
         assertThat(tableSize).isEqualTo(35840L);
         generator.minSplitMemorySize = 5000L;
-        List<CassandraSplit> splits = generator.generateSplits();
+        List<CassandraSplit> splits = generator.prepareSplits();
         assertThat(splits.size()).isEqualTo(tableSize / maxSplitMemorySize);
     }
 
@@ -153,7 +157,7 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
                         100_000_000L);
         // sanity check to ensure that the size estimates were updated in the Cassandra cluster
         assertThat(generator.estimateTableSize()).isEqualTo(35840L);
-        List<CassandraSplit> splits = generator.generateSplits();
+        List<CassandraSplit> splits = generator.prepareSplits();
         // tableSize / maxSplitMemorySize is very low falling back to 1 split
         assertThat(splits.size()).isEqualTo(parallelism);
     }
@@ -177,7 +181,7 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
         // sanity check to ensure that the size estimates were updated in the Cassandra cluster
         assertThat(generator.estimateTableSize()).isEqualTo(35840L);
         // we prevent creating too many splits by just preventing a too low maxSplitMemorySize
-        assertThatThrownBy(generator::generateSplits)
+        assertThatThrownBy(generator::prepareSplits)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("maxSplitMemorySize")
                 .hasMessageContaining("is below minimum");

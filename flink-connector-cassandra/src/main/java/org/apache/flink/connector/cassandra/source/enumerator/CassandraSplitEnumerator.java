@@ -25,7 +25,6 @@ import org.apache.flink.connector.cassandra.source.split.SplitsGenerator;
 import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
 
 import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.Metadata;
 import com.datastax.driver.core.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,10 +67,26 @@ public final class CassandraSplitEnumerator
     }
 
     @Override
+    public void start() {
+        // TODO make async call ?
+        prepareSplits();
+    }
+
+    private void prepareSplits() {
+        final int parallelism = enumeratorContext.currentParallelism();
+        final String partitionerName = cluster.getMetadata().getPartitioner();
+        final SplitsGenerator.CassandraPartitioner partitioner =
+                partitionerName.contains(MURMUR3PARTITIONER.getClassName())
+                        ? MURMUR3PARTITIONER
+                        : RANDOMPARTITIONER;
+        new SplitsGenerator(partitioner, session, keyspace, table, parallelism, maxSplitMemorySize)
+                .prepareSplits(state);
+    }
+
+    @Override
     public void handleSplitRequest(int subtaskId, @Nullable String requesterHostname) {
         checkReaderRegistered(subtaskId);
-        // TODO impl lazy split generation.
-        final CassandraSplit cassandraSplit = state.getASplit();
+        final CassandraSplit cassandraSplit = state.getNextSplit();
         if (cassandraSplit != null) {
             LOG.info("Assigning splits to reader {}", subtaskId);
             enumeratorContext.assignSplit(cassandraSplit, subtaskId);
@@ -84,40 +99,13 @@ public final class CassandraSplitEnumerator
     }
 
     @Override
-    public void start() {
-        // discover the splits and update enumerator unassigned splits.
-        // There is only an initial splits discovery, no periodic discovery.
-        // TODO do not discover the splits on start. Rather prepare for splits generation
-        enumeratorContext.callAsync(
-                this::discoverSplits,
-                (splits, throwable) -> {
-                    LOG.info("Add {} splits to CassandraSplitEnumerator.", splits.size());
-                    state.addNewSplits(splits);
-                });
-    }
-
-    private List<CassandraSplit> discoverSplits() {
-        final int parallelism = enumeratorContext.currentParallelism();
-        final Metadata clusterMetadata = cluster.getMetadata();
-        final String partitionerName = clusterMetadata.getPartitioner();
-        final SplitsGenerator.CassandraPartitioner partitioner =
-                partitionerName.contains(MURMUR3PARTITIONER.getClassName())
-                        ? MURMUR3PARTITIONER
-                        : RANDOMPARTITIONER;
-        return new SplitsGenerator(
-                        partitioner, session, keyspace, table, parallelism, maxSplitMemorySize)
-                .generateSplits();
-    }
-
-    @Override
     public void addSplitsBack(List<CassandraSplit> splits, int subtaskId) {
-        LOG.info("Add {} splits back to CassandraSplitEnumerator.", splits.size());
-        state.addNewSplits(splits);
+        // nothing to do as the CassandraSplits are generated lazily
     }
 
     @Override
     public void addReader(int subtaskId) {
-        // this source is purely lazy-pull-based, nothing to do upon registration
+        // nothing to do as the CassandraSplits are generated lazily
     }
 
     private void checkReaderRegistered(int readerId) {

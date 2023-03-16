@@ -18,43 +18,76 @@
 
 package org.apache.flink.connector.cassandra.source.enumerator;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 
 import javax.annotation.Nullable;
 
-import java.util.ArrayDeque;
-import java.util.Collection;
+import java.math.BigInteger;
 import java.util.Objects;
-import java.util.Queue;
-
-import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /** State for {@link CassandraSplitEnumerator} to track the splits yet to assign. */
 public class CassandraEnumeratorState {
+    private long numSplitsToGenerate;
+    private BigInteger increment;
+    private BigInteger startToken;
+    private BigInteger endToken;
+    private BigInteger maxToken;
 
-    private final Queue<CassandraSplit> unassignedSplits;
+    @VisibleForTesting
+    public CassandraEnumeratorState() {}
 
-    CassandraEnumeratorState() {
-        this.unassignedSplits = new ArrayDeque<>();
+    // constructor for serde
+    CassandraEnumeratorState(
+            long numSplitsToGenerate,
+            BigInteger increment,
+            BigInteger startToken,
+            BigInteger endToken,
+            BigInteger maxToken) {
+        this.numSplitsToGenerate = numSplitsToGenerate;
+        this.increment = increment;
+        this.startToken = startToken;
+        this.endToken = endToken;
+        this.maxToken = maxToken;
     }
 
-    CassandraEnumeratorState(Queue<CassandraSplit> unassignedSplits) {
-        checkNotNull(unassignedSplits);
-        this.unassignedSplits = unassignedSplits;
+    public void initializeState(
+            long numSplitsToGenerate,
+            BigInteger increment,
+            BigInteger startToken,
+            BigInteger maxToken) {
+        this.numSplitsToGenerate = numSplitsToGenerate;
+        this.increment = increment;
+        this.startToken = startToken;
+        this.maxToken = maxToken;
     }
 
-    public Queue<CassandraSplit> getUnassignedSplits() {
-        return unassignedSplits;
+    @VisibleForTesting
+    public long getNumSplitsToGenerate() {
+        return numSplitsToGenerate;
     }
 
-    public void addNewSplits(Collection<CassandraSplit> newSplits) {
-        unassignedSplits.addAll(newSplits);
+    /**
+     * Lazily create a {@link CassandraSplit} containing a range of the Cassandra ring of {@code
+     * maxSplitMemorySize}.
+     */
+    public @Nullable CassandraSplit getNextSplit() {
+        if (numSplitsToGenerate == 0) {
+            return null; // no more splits
+        }
+        endToken =
+                numSplitsToGenerate == 1
+                        // last split to generate, round up to the last token of the ring
+                        ? maxToken
+                        : startToken.add(increment);
+        // prepare for next call
+        BigInteger startToken = this.startToken;
+        this.startToken = endToken;
+        numSplitsToGenerate--;
+        return new CassandraSplit(startToken, endToken);
     }
 
-    public @Nullable CassandraSplit getASplit() {
-        return unassignedSplits.poll();
-    }
-
+    // TODO update serialization and equals/hashcode
     @Override
     public boolean equals(Object o) {
         if (this == o) {

@@ -44,7 +44,7 @@ public class CassandraEnumeratorStateSerializer
     public int getVersion() {
         return CURRENT_VERSION;
     }
-
+    // TODO update serde
     @Override
     public byte[] serialize(CassandraEnumeratorState cassandraEnumeratorState) throws IOException {
         try (final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
