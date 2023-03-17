@@ -43,7 +43,7 @@ public final class CassandraSplitEnumerator
     private static final Logger LOG = LoggerFactory.getLogger(CassandraSplitEnumerator.class);
 
     private final SplitEnumeratorContext<CassandraSplit> enumeratorContext;
-    private final CassandraEnumeratorState state;
+    private CassandraEnumeratorState state;
     private final Cluster cluster;
     private final Long maxSplitMemorySize;
     private final Session session;
@@ -68,19 +68,25 @@ public final class CassandraSplitEnumerator
 
     @Override
     public void start() {
-        // TODO make async call ?
-        prepareSplits();
+        enumeratorContext.callAsync(
+                this::prepareSplits,
+                (preparedState, throwable) -> {
+                    LOG.debug("Initialized CassandraEnumeratorState: {}", preparedState);
+                    state = preparedState;
+                });
     }
 
-    private void prepareSplits() {
+    private CassandraEnumeratorState prepareSplits() {
         final int parallelism = enumeratorContext.currentParallelism();
         final String partitionerName = cluster.getMetadata().getPartitioner();
         final SplitsGenerator.CassandraPartitioner partitioner =
                 partitionerName.contains(MURMUR3PARTITIONER.getClassName())
                         ? MURMUR3PARTITIONER
                         : RANDOMPARTITIONER;
-        new SplitsGenerator(partitioner, session, keyspace, table, parallelism, maxSplitMemorySize)
-                .prepareSplits(state);
+        final SplitsGenerator splitsGenerator =
+                new SplitsGenerator(
+                        partitioner, session, keyspace, table, parallelism, maxSplitMemorySize);
+        return splitsGenerator.prepareSplits();
     }
 
     @Override

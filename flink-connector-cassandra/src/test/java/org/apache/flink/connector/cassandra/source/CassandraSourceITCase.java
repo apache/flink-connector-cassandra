@@ -85,7 +85,7 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
         generator.prepareSplits(state);
 
         // no maxSplitMemorySize specified falling back number of splits = parallelism
-        assertThat(state.getNumSplitsToGenerate()).isEqualTo(parallelism);
+        assertThat(state.getNumSplitsLeftToGenerate()).isEqualTo(parallelism);
         assertThat(state.getNextSplit()).isEqualTo("(-9223372036854775808,0)");
         assertThat(state.getNextSplit()).isEqualTo("(0,9223372036854775807)");
     }

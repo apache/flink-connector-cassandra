@@ -74,13 +74,13 @@ public final class SplitsGenerator {
      * determine {@code numSplits} based on estimated target table size and provided {@code
      * maxSplitMemorySize}.
      */
-    public void prepareSplits(CassandraEnumeratorState state) {
-        //TODO SplitGenerator knows about tokens and CassandraEnumeratorState knows about state. Improve this initialization pattern
+    public CassandraEnumeratorState prepareSplits() {
         final long numSplitsToGenerate = decideOnNumSplits();
         final BigInteger increment =
                 (partitioner.ringSize).divide(new BigInteger(String.valueOf(numSplitsToGenerate)));
         final BigInteger startToken = partitioner.minToken;
-        state.initializeState(numSplitsToGenerate, increment, startToken, partitioner.maxToken);
+        return new CassandraEnumeratorState(
+                numSplitsToGenerate, increment, startToken, partitioner.maxToken);
     }
 
     /**

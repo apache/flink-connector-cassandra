@@ -18,8 +18,6 @@
 
 package org.apache.flink.connector.cassandra.source.enumerator;
 
-import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
-import org.apache.flink.connector.cassandra.source.split.CassandraSplitSerializer;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 
 import java.io.ByteArrayInputStream;
@@ -27,8 +25,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.util.ArrayDeque;
-import java.util.Queue;
+import java.math.BigInteger;
 
 /** Serializer for {@link CassandraEnumeratorState}. */
 public class CassandraEnumeratorStateSerializer
@@ -44,21 +41,26 @@ public class CassandraEnumeratorStateSerializer
     public int getVersion() {
         return CURRENT_VERSION;
     }
-    // TODO update serde
+
     @Override
     public byte[] serialize(CassandraEnumeratorState cassandraEnumeratorState) throws IOException {
         try (final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
                 final ObjectOutputStream objectOutputStream =
                         new ObjectOutputStream(byteArrayOutputStream)) {
-            final Queue<CassandraSplit> unassignedSplits =
-                    cassandraEnumeratorState.getUnassignedSplits();
-            objectOutputStream.writeInt(unassignedSplits.size());
-            for (CassandraSplit cassandraSplit : unassignedSplits) {
-                final byte[] serializedSplit =
-                        CassandraSplitSerializer.INSTANCE.serialize(cassandraSplit);
-                objectOutputStream.writeInt(serializedSplit.length);
-                objectOutputStream.write(serializedSplit);
-            }
+            objectOutputStream.writeLong(cassandraEnumeratorState.getNumSplitsLeftToGenerate());
+
+            final byte[] increment = cassandraEnumeratorState.getIncrement().toByteArray();
+            objectOutputStream.writeInt(increment.length);
+            byteArrayOutputStream.write(increment);
+
+            final byte[] startToken = cassandraEnumeratorState.getStartToken().toByteArray();
+            objectOutputStream.writeInt(startToken.length);
+            byteArrayOutputStream.write(startToken);
+
+            final byte[] maxToken = cassandraEnumeratorState.getMaxToken().toByteArray();
+            objectOutputStream.writeInt(maxToken.length);
+            byteArrayOutputStream.write(maxToken);
+
             objectOutputStream.flush();
             return byteArrayOutputStream.toByteArray();
         }
@@ -70,21 +72,31 @@ public class CassandraEnumeratorStateSerializer
                         new ByteArrayInputStream(serialized);
                 final ObjectInputStream objectInputStream =
                         new ObjectInputStream(byteArrayInputStream)) {
-            Queue<CassandraSplit> unassignedSplits = new ArrayDeque<>();
-            final int unassignedSplitsSize = objectInputStream.readInt();
-            for (int i = 0; i < unassignedSplitsSize; i++) {
-                final int splitSize = objectInputStream.readInt();
-                final byte[] splitBytes = new byte[splitSize];
-                if (objectInputStream.read(splitBytes) == -1) {
-                    throw new IOException(
-                            "EOF received while deserializing CassandraEnumeratorState");
-                }
-                final CassandraSplit split =
-                        CassandraSplitSerializer.INSTANCE.deserialize(
-                                CassandraSplitSerializer.CURRENT_VERSION, splitBytes);
-                unassignedSplits.add(split);
+            final long numSplitsLeftToGenerate = objectInputStream.readLong();
+
+            final int incrementSize = objectInputStream.readInt();
+            final byte[] incrementBytes = new byte[incrementSize];
+            if (byteArrayInputStream.read(incrementBytes) == -1) {
+                throw new IOException("EOF received while deserializing cassandraEnumeratorState.increment");
             }
-            return new CassandraEnumeratorState(unassignedSplits);
+            final BigInteger increment = new BigInteger(incrementBytes);
+
+            final int startTokenSize = objectInputStream.readInt();
+            final byte[] startTokenBytes = new byte[startTokenSize];
+            if (byteArrayInputStream.read(startTokenBytes) == -1) {
+                throw new IOException("EOF received while deserializing cassandraEnumeratorState.startToken");
+            }
+            final BigInteger startToken = new BigInteger(startTokenBytes);
+
+            final int maxTokenSize = objectInputStream.readInt();
+            final byte[] maxTokenBytes = new byte[maxTokenSize];
+            if (byteArrayInputStream.read(maxTokenBytes) == -1) {
+                throw new IOException("EOF received while deserializing cassandraEnumeratorState.maxToken");
+            }
+            final BigInteger maxToken = new BigInteger(maxTokenBytes);
+
+            return new CassandraEnumeratorState(
+                    numSplitsLeftToGenerate, increment, startToken, maxToken);
         }
     }
 }
