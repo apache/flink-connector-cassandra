@@ -18,7 +18,6 @@
 
 package org.apache.flink.connector.cassandra.source.enumerator;
 
-import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 import org.apache.flink.connector.cassandra.source.split.SplitsGenerator;
 
@@ -53,7 +52,6 @@ public class CassandraEnumeratorState {
         this.maxToken = maxToken;
     }
 
-    @VisibleForTesting
     public long getNumSplitsLeftToGenerate() {
         return numSplitsLeftToGenerate;
     }
