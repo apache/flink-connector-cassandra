@@ -18,14 +18,9 @@
 
 package org.apache.flink.connector.cassandra.source.enumerator;
 
-import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
-
-import org.apache.flink.shaded.guava30.com.google.common.collect.ImmutableList;
-
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -34,13 +29,9 @@ class CassandraEnumeratorStateSerializerTest {
 
     @Test
     public void testSerdeRoundtrip() throws Exception {
-        final CassandraEnumeratorState cassandraEnumeratorState = new CassandraEnumeratorState();
-        final List<CassandraSplit> testData =
-                ImmutableList.of(
-                        new CassandraSplit(BigInteger.ZERO, BigInteger.TEN),
-                        new CassandraSplit(BigInteger.TEN, BigInteger.ZERO));
+        final CassandraEnumeratorState cassandraEnumeratorState =
+                new CassandraEnumeratorState(10, BigInteger.ONE, BigInteger.ZERO, BigInteger.TEN);
 
-        cassandraEnumeratorState.addNewSplits(testData);
         final byte[] serialized =
                 CassandraEnumeratorStateSerializer.INSTANCE.serialize(cassandraEnumeratorState);
         final CassandraEnumeratorState deserialized =

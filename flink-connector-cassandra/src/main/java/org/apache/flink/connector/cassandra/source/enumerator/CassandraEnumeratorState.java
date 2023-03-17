@@ -30,9 +30,9 @@ import java.util.Objects;
 /**
  * State for {@link CassandraSplitEnumerator}. It stores the offset ({@code startToken}) of the last
  * lazy {@link CassandraSplit} generation and the number of splits left to generate. Upon
- * restoration of this sate, {@link SplitsGenerator#prepareSplits(CassandraEnumeratorState)} is not
- * re-run obviously. So we need to store also the result of this initial splits preparation ({@code
- * increment} and {@code maxToken}).
+ * restoration of this sate, {@link SplitsGenerator#prepareSplits()} is obviously not re-run. So we
+ * need to store also the result of this initial splits preparation ({@code increment} and {@code
+ * maxToken}).
  */
 public class CassandraEnumeratorState {
     private long numSplitsLeftToGenerate;
@@ -40,8 +40,7 @@ public class CassandraEnumeratorState {
     private BigInteger startToken;
     private BigInteger maxToken;
 
-    @VisibleForTesting
-    public CassandraEnumeratorState() {}
+    CassandraEnumeratorState() {}
 
     public CassandraEnumeratorState(
             long numSplitsLeftToGenerate,

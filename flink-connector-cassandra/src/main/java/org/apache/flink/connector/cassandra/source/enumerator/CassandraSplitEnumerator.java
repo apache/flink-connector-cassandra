@@ -71,7 +71,7 @@ public final class CassandraSplitEnumerator
         enumeratorContext.callAsync(
                 this::prepareSplits,
                 (preparedState, throwable) -> {
-                    LOG.debug("Initialized CassandraEnumeratorState: {}", preparedState);
+                    LOG.debug("Initialized CassandraEnumeratorState: {}", preparedState.toString());
                     state = preparedState;
                 });
     }
