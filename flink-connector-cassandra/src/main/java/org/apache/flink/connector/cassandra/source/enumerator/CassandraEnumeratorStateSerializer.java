@@ -51,18 +51,17 @@ public class CassandraEnumeratorStateSerializer
 
             final byte[] increment = cassandraEnumeratorState.getIncrement().toByteArray();
             objectOutputStream.writeInt(increment.length);
-            byteArrayOutputStream.write(increment);
+            objectOutputStream.write(increment);
 
             final byte[] startToken = cassandraEnumeratorState.getStartToken().toByteArray();
             objectOutputStream.writeInt(startToken.length);
-            byteArrayOutputStream.write(startToken);
+            objectOutputStream.write(startToken);
 
             final byte[] maxToken = cassandraEnumeratorState.getMaxToken().toByteArray();
             objectOutputStream.writeInt(maxToken.length);
-            byteArrayOutputStream.write(maxToken);
+            objectOutputStream.write(maxToken);
 
             objectOutputStream.flush();
-            byteArrayOutputStream.flush();
             return byteArrayOutputStream.toByteArray();
         }
     }
@@ -77,7 +76,7 @@ public class CassandraEnumeratorStateSerializer
 
             final int incrementSize = objectInputStream.readInt();
             final byte[] incrementBytes = new byte[incrementSize];
-            if (byteArrayInputStream.read(incrementBytes) == -1) {
+            if (objectInputStream.read(incrementBytes) == -1) {
                 throw new IOException(
                         "EOF received while deserializing cassandraEnumeratorState.increment");
             }
@@ -85,7 +84,7 @@ public class CassandraEnumeratorStateSerializer
 
             final int startTokenSize = objectInputStream.readInt();
             final byte[] startTokenBytes = new byte[startTokenSize];
-            if (byteArrayInputStream.read(startTokenBytes) == -1) {
+            if (objectInputStream.read(startTokenBytes) == -1) {
                 throw new IOException(
                         "EOF received while deserializing cassandraEnumeratorState.startToken");
             }
@@ -93,7 +92,7 @@ public class CassandraEnumeratorStateSerializer
 
             final int maxTokenSize = objectInputStream.readInt();
             final byte[] maxTokenBytes = new byte[maxTokenSize];
-            if (byteArrayInputStream.read(maxTokenBytes) == -1) {
+            if (objectInputStream.read(maxTokenBytes) == -1) {
                 throw new IOException(
                         "EOF received while deserializing cassandraEnumeratorState.maxToken");
             }
