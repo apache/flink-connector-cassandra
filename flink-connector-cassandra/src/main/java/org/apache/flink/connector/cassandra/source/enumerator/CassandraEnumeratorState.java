@@ -72,9 +72,9 @@ public class CassandraEnumeratorState {
 
     /**
      * Lazily create a {@link CassandraSplit} containing a range of the Cassandra ring of {@code
-     * maxSplitMemorySize}. There is no way to estimate the size of the data with the optional
-     * SQL filters without reading the data. So the split can be smaller than {@code
-     * maxSplitMemorySize} when the query is executed.
+     * maxSplitMemorySize}. There is no way to estimate the size of the data with the optional SQL
+     * filters without reading the data. So the split can be smaller than {@code maxSplitMemorySize}
+     * when the query is executed.
      */
     public @Nullable CassandraSplit getNextSplit() {
         if (numSplitsLeftToGenerate == 0) {

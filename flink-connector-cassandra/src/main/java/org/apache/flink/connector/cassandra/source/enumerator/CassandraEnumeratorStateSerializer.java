@@ -62,6 +62,7 @@ public class CassandraEnumeratorStateSerializer
             byteArrayOutputStream.write(maxToken);
 
             objectOutputStream.flush();
+            byteArrayOutputStream.flush();
             return byteArrayOutputStream.toByteArray();
         }
     }
@@ -77,21 +78,24 @@ public class CassandraEnumeratorStateSerializer
             final int incrementSize = objectInputStream.readInt();
             final byte[] incrementBytes = new byte[incrementSize];
             if (byteArrayInputStream.read(incrementBytes) == -1) {
-                throw new IOException("EOF received while deserializing cassandraEnumeratorState.increment");
+                throw new IOException(
+                        "EOF received while deserializing cassandraEnumeratorState.increment");
             }
             final BigInteger increment = new BigInteger(incrementBytes);
 
             final int startTokenSize = objectInputStream.readInt();
             final byte[] startTokenBytes = new byte[startTokenSize];
             if (byteArrayInputStream.read(startTokenBytes) == -1) {
-                throw new IOException("EOF received while deserializing cassandraEnumeratorState.startToken");
+                throw new IOException(
+                        "EOF received while deserializing cassandraEnumeratorState.startToken");
             }
             final BigInteger startToken = new BigInteger(startTokenBytes);
 
             final int maxTokenSize = objectInputStream.readInt();
             final byte[] maxTokenBytes = new byte[maxTokenSize];
             if (byteArrayInputStream.read(maxTokenBytes) == -1) {
-                throw new IOException("EOF received while deserializing cassandraEnumeratorState.maxToken");
+                throw new IOException(
+                        "EOF received while deserializing cassandraEnumeratorState.maxToken");
             }
             final BigInteger maxToken = new BigInteger(maxTokenBytes);
 
