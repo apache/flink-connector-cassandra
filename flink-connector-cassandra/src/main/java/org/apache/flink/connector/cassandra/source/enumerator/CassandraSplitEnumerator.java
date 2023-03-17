@@ -106,7 +106,8 @@ public final class CassandraSplitEnumerator
 
     @Override
     public void addSplitsBack(List<CassandraSplit> splits, int subtaskId) {
-        // nothing to do as the CassandraSplits are generated lazily
+        // TODO impl as we need these splits to be provided back by the enumerator lazilly when the
+        // restored source reader asks for splits (see Kafka source on how to impl)
     }
 
     @Override

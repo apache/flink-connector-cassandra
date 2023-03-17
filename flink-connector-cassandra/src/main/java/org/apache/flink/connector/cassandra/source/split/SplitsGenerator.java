@@ -140,6 +140,7 @@ public final class SplitsGenerator {
             size += tokenRange.meanPartitionSize * tokenRange.partitionCount;
         }
         final float ringFraction = getRingFraction(tokenRanges);
+        // ringFraction can be null if the size estimates are not available
         return ringFraction != 0 ? Math.round(size / ringFraction) : 0L;
     }
 

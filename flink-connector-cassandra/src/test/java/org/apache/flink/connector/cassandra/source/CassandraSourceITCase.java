@@ -134,7 +134,7 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
             throws Exception {
         final int parallelism = 2;
         final long maxSplitMemorySize = 10000L;
-        SplitsGenerator generator =
+        final SplitsGenerator generator =
                 new SplitsGenerator(
                         MURMUR3PARTITIONER,
                         cassandraTestEnvironment.getSession(),
@@ -142,7 +142,8 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
                         CassandraTestEnvironment.SPLITS_TABLE,
                         parallelism,
                         maxSplitMemorySize);
-        long tableSize = generator.estimateTableSize();
+        final long tableSize = generator.estimateTableSize();
+        // sanity check to ensure that the size estimates were updated in the Cassandra cluster
         assertThat(tableSize).isEqualTo(35840L);
         generator.minSplitMemorySize = 5000L;
         final CassandraEnumeratorState cassandraEnumeratorState = generator.prepareSplits();
@@ -159,7 +160,7 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
             CheckpointingMode semantic)
             throws Exception {
         final int parallelism = 20;
-        SplitsGenerator generator =
+        final SplitsGenerator generator =
                 new SplitsGenerator(
                         MURMUR3PARTITIONER,
                         cassandraTestEnvironment.getSession(),
@@ -182,7 +183,7 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
             CheckpointingMode semantic)
             throws Exception {
         final int parallelism = 2;
-        SplitsGenerator generator =
+        final SplitsGenerator generator =
                 new SplitsGenerator(
                         MURMUR3PARTITIONER,
                         cassandraTestEnvironment.getSession(),
