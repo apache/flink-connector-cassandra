@@ -36,11 +36,9 @@ import java.util.List;
 import static org.apache.flink.util.Preconditions.checkState;
 
 /**
- * This class generates {@link CassandraSplit}s based on Cassandra cluster partitioner and cluster
+ * This class prepares the generation of {@link CassandraSplit}s based on Cassandra cluster partitioner and cluster
  * statistics. It estimates the total size of the table using Cassandra system table
- * system.size_estimates. But there is no way to estimate the size of the data with the optional SQL
- * filters without reading the data. So the splits can be smaller than {@param maxSplitMemorySize}
- * when the query is executed.
+ * system.size_estimates.
  */
 public final class SplitsGenerator {
 
@@ -71,8 +69,8 @@ public final class SplitsGenerator {
 
     /**
      * Prepare the {@param CassandraEnumeratorState} for lazy generation of {@link CassandraSplit}s:
-     * determine {@code numSplits} based on estimated target table size and provided {@code
-     * maxSplitMemorySize}.
+     * determine {@code numSplitsToGenerate} based on estimated target table size and provided {@code
+     * maxSplitMemorySize} and {@code increment} which is the size of a split in tokens.
      */
     public CassandraEnumeratorState prepareSplits() {
         final long numSplitsToGenerate = decideOnNumSplits();
@@ -85,7 +83,7 @@ public final class SplitsGenerator {
 
     /**
      * Determine {@code numSplits} based on the estimation of the target table size and user defined
-     * {@code maxSplitMemorySize}. Add fallbacks when table size is unavailable, too few or too many
+     * {@code maxSplitMemorySize}. Provide fallbacks when table size is unavailable, too few or too many
      * splits are calculated.
      */
     private long decideOnNumSplits() {
