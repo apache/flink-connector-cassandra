@@ -19,6 +19,7 @@
 package org.apache.flink.connector.cassandra.source;
 
 import org.apache.flink.connector.cassandra.source.enumerator.CassandraEnumeratorState;
+import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 import org.apache.flink.connector.cassandra.source.split.SplitsGenerator;
 import org.apache.flink.connector.testframe.environment.ClusterControllable;
 import org.apache.flink.connector.testframe.environment.MiniClusterTestEnvironment;
@@ -45,6 +46,7 @@ import static org.apache.flink.connector.cassandra.source.CassandraTestContext.C
 import static org.apache.flink.connector.cassandra.source.split.SplitsGenerator.CassandraPartitioner.MURMUR3PARTITIONER;
 import static org.apache.flink.connector.cassandra.source.split.SplitsGenerator.CassandraPartitioner.RANDOMPARTITIONER;
 import static org.apache.flink.connector.testframe.utils.ConnectorTestConstants.DEFAULT_COLLECT_DATA_TIMEOUT;
+import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -82,13 +84,14 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
 
         // no maxSplitMemorySize specified falling back number of splits = parallelism
         assertThat(state.getNumSplitsLeftToGenerate()).isEqualTo(parallelism);
-        try {
-            assertThat(state.getNextSplit().splitId()).isEqualTo("(-9223372036854775808,0)");
-            assertThat(state.getNextSplit().splitId()).isEqualTo("(0,9223372036854775807)");
-        } catch (NullPointerException e) {
-            throw new IllegalStateException(
-                    "No splits left to generate in CassandraEnumeratorState", e);
-        }
+
+        final CassandraSplit split1 = state.getNextSplit();
+        checkNotNull(split1, "No splits left to generate in CassandraEnumeratorState");
+        assertThat(split1.splitId()).isEqualTo("(-9223372036854775808,0)");
+
+        final CassandraSplit split2 = state.getNextSplit();
+        checkNotNull(split2, "No splits left to generate in CassandraEnumeratorState");
+        assertThat(split2.splitId()).isEqualTo("(0,9223372036854775807)");
     }
 
     @TestTemplate
@@ -110,16 +113,16 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
 
         // no maxSplitMemorySize specified falling back number of splits = parallelism
         assertThat(state.getNumSplitsLeftToGenerate()).isEqualTo(parallelism);
-        try {
-            assertThat(state.getNextSplit().splitId())
-                    .isEqualTo("(0,85070591730234615865843651857942052864)");
-            assertThat(state.getNextSplit().splitId())
-                    .isEqualTo(
-                            "(85070591730234615865843651857942052864,170141183460469231731687303715884105727)");
-        } catch (NullPointerException e) {
-            throw new IllegalStateException(
-                    "No splits left to generate in CassandraEnumeratorState", e);
-        }
+
+        final CassandraSplit split1 = state.getNextSplit();
+        checkNotNull(split1, "No splits left to generate in CassandraEnumeratorState");
+        assertThat(split1.splitId()).isEqualTo("(0,85070591730234615865843651857942052864)");
+
+        final CassandraSplit split2 = state.getNextSplit();
+        checkNotNull(split2, "No splits left to generate in CassandraEnumeratorState");
+        assertThat(split2.splitId())
+                .isEqualTo(
+                        "(85070591730234615865843651857942052864,170141183460469231731687303715884105727)");
     }
 
     @TestTemplate

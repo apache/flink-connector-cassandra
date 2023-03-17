@@ -110,7 +110,7 @@ public final class SplitsGenerator {
                         estimateTableSize);
                 numSplits =
                         estimateTableSize / maxSplitMemorySize == 0
-                                ? parallelism // maxSplitMemorySize oversizes estimateTableSize,
+                                ? parallelism // estimateTableSize under sizes maxSplitMemorySize
                                 // creating as many splits as parallelism
                                 : estimateTableSize / maxSplitMemorySize;
                 LOG.info(
