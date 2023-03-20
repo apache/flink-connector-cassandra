@@ -106,13 +106,15 @@ public final class CassandraSplitEnumerator
 
     @Override
     public void addSplitsBack(List<CassandraSplit> splits, int subtaskId) {
-        // TODO impl as we need these splits to be provided back by the enumerator lazilly when the
-        // restored source reader asks for splits (see Kafka source on how to impl)
+        // splits that were assigned to a failed reader and that were not part of a checkpoint, so
+        // after
+        // restoration, they need to be reassigned.
+        state.addSplitsBack(splits);
     }
 
     @Override
     public void addReader(int subtaskId) {
-        // nothing to do as the CassandraSplits are generated lazily
+        // nothing to do on reader registration as the CassandraSplits are generated lazily
     }
 
     private void checkReaderRegistered(int readerId) {

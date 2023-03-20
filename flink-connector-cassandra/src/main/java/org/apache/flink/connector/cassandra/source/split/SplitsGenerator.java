@@ -30,6 +30,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 
 import java.math.BigInteger;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -69,8 +70,9 @@ public final class SplitsGenerator {
 
     /**
      * Prepare the {@param CassandraEnumeratorState} for lazy generation of {@link CassandraSplit}s:
-     * determine {@code numSplitsToGenerate} based on estimated target table size and provided
-     * {@code maxSplitMemorySize} and {@code increment} which is the size of a split in tokens.
+     * calculate {@code numSplitsToGenerate} based on estimated target table size and provided
+     * {@code maxSplitMemorySize} and calculate {@code increment} which is the size of a split in
+     * tokens.
      */
     public CassandraEnumeratorState prepareSplits() {
         final long numSplitsToGenerate = decideOnNumSplits();
@@ -78,7 +80,11 @@ public final class SplitsGenerator {
                 (partitioner.ringSize).divide(new BigInteger(String.valueOf(numSplitsToGenerate)));
         final BigInteger startToken = partitioner.minToken;
         return new CassandraEnumeratorState(
-                numSplitsToGenerate, increment, startToken, partitioner.maxToken);
+                numSplitsToGenerate,
+                increment,
+                startToken,
+                partitioner.maxToken,
+                new ArrayDeque<>());
     }
 
     /**
