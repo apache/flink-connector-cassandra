@@ -94,12 +94,14 @@ public class CassandraSource<OUT>
     private static final long serialVersionUID = 1L;
 
     private final ClusterBuilder clusterBuilder;
-    @Nullable private final Long maxSplitMemorySize;
     private final Class<OUT> pojoClass;
     private final String query;
     private final String keyspace;
     private final String table;
     private final MapperOptions mapperOptions;
+
+    @Nullable private final Long maxSplitMemorySize;
+    private static final Long MIN_SPLIT_MEMORY_SIZE = 10_000_000L; // 10 MB
 
     public CassandraSource(
             ClusterBuilder clusterBuilder,
@@ -122,6 +124,11 @@ public class CassandraSource<OUT>
                 maxSplitMemorySize);
         checkNotNull(pojoClass, "POJO class required but not provided");
         checkNotNull(query, "query required but not provided");
+        checkState(
+                maxSplitMemorySize == null || maxSplitMemorySize >= MIN_SPLIT_MEMORY_SIZE,
+                "Defined maxSplitMemorySize (%s) is below minimum (%s)",
+                maxSplitMemorySize,
+                MIN_SPLIT_MEMORY_SIZE);
         final Matcher queryMatcher = checkQueryValidity(query);
         this.query = query;
         keyspace = queryMatcher.group(1);

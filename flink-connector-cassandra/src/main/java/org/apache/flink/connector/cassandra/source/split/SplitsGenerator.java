@@ -34,8 +34,6 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.apache.flink.util.Preconditions.checkState;
-
 /**
  * This class prepares the generation of {@link CassandraSplit}s based on Cassandra cluster
  * partitioner and cluster statistics. It estimates the total size of the table using Cassandra
@@ -44,7 +42,6 @@ import static org.apache.flink.util.Preconditions.checkState;
 public final class SplitsGenerator {
 
     private static final Logger LOG = LoggerFactory.getLogger(SplitsGenerator.class);
-    @VisibleForTesting public Long minSplitMemorySize = 10_000_000L; // 10 MB
 
     private final CassandraPartitioner partitioner;
     private final Session session;
@@ -95,11 +92,6 @@ public final class SplitsGenerator {
     private long decideOnNumSplits() {
         long numSplits;
         if (maxSplitMemorySize != null) {
-            checkState(
-                    maxSplitMemorySize >= minSplitMemorySize,
-                    "Defined maxSplitMemorySize (%s) is below minimum (%s)",
-                    maxSplitMemorySize,
-                    minSplitMemorySize);
             final long estimateTableSize = estimateTableSize();
             if (estimateTableSize == 0) { // size estimates unavailable
                 LOG.info(

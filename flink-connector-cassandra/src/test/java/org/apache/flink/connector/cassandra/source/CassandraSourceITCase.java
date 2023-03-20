@@ -145,7 +145,6 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
         final long tableSize = generator.estimateTableSize();
         // sanity check to ensure that the size estimates were updated in the Cassandra cluster
         assertThat(tableSize).isEqualTo(35840L);
-        generator.minSplitMemorySize = 5000L;
         final CassandraEnumeratorState cassandraEnumeratorState = generator.prepareSplits();
         assertThat(cassandraEnumeratorState.getNumSplitsLeftToGenerate())
                 // regular case
