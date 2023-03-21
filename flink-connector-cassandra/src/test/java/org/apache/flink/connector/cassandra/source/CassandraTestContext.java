@@ -88,7 +88,6 @@ public class CassandraTestContext implements DataStreamSourceExternalContext<Poj
 
         return new CassandraSource<>(
                 clusterBuilder,
-                CassandraSource.MAX_SPLIT_MEMORY_SIZE_DEFAULT,
                 Pojo.class,
                 String.format(
                         "SELECT * FROM %s.%s;", CassandraTestEnvironment.KEYSPACE, TABLE_NAME),
