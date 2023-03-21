@@ -47,7 +47,7 @@ public final class SplitsGenerator {
     private final String keyspace;
     private final String table;
     private final int parallelism;
-    private final Long maxSplitMemorySize;
+    private final long maxSplitMemorySize;
 
     public SplitsGenerator(
             CassandraPartitioner partitioner,
@@ -55,7 +55,7 @@ public final class SplitsGenerator {
             String keyspace,
             String table,
             int parallelism,
-            Long maxSplitMemorySize) {
+            long maxSplitMemorySize) {
         this.partitioner = partitioner;
         this.session = session;
         this.keyspace = keyspace;

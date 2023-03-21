@@ -99,9 +99,9 @@ public class CassandraSource<OUT>
     private final String table;
     private final MapperOptions mapperOptions;
 
-    private final Long maxSplitMemorySize;
-    private static final Long MIN_SPLIT_MEMORY_SIZE = MemorySize.ofMebiBytes(10).getBytes();
-    public static final Long MAX_SPLIT_MEMORY_SIZE_DEFAULT =
+    private final long maxSplitMemorySize;
+    private static final long MIN_SPLIT_MEMORY_SIZE = MemorySize.ofMebiBytes(10).getBytes();
+    public static final long MAX_SPLIT_MEMORY_SIZE_DEFAULT =
             MemorySize.ofMebiBytes(1000).getBytes();
 
     public CassandraSource(
@@ -109,12 +109,12 @@ public class CassandraSource<OUT>
             Class<OUT> pojoClass,
             String query,
             MapperOptions mapperOptions) {
-        this(clusterBuilder, null, pojoClass, query, mapperOptions);
+        this(clusterBuilder, MAX_SPLIT_MEMORY_SIZE_DEFAULT, pojoClass, query, mapperOptions);
     }
 
     public CassandraSource(
             ClusterBuilder clusterBuilder,
-            Long maxSplitMemorySize,
+            long maxSplitMemorySize,
             Class<OUT> pojoClass,
             String query,
             MapperOptions mapperOptions) {
@@ -122,12 +122,11 @@ public class CassandraSource<OUT>
         checkNotNull(pojoClass, "POJO class required but not provided");
         checkNotNull(query, "query required but not provided");
         checkState(
-                maxSplitMemorySize == null || maxSplitMemorySize >= MIN_SPLIT_MEMORY_SIZE,
+                maxSplitMemorySize >= MIN_SPLIT_MEMORY_SIZE,
                 "Defined maxSplitMemorySize (%s) is below minimum (%s)",
                 maxSplitMemorySize,
                 MIN_SPLIT_MEMORY_SIZE);
-        this.maxSplitMemorySize =
-                maxSplitMemorySize == null ? MAX_SPLIT_MEMORY_SIZE_DEFAULT : maxSplitMemorySize;
+        this.maxSplitMemorySize = maxSplitMemorySize;
         final Matcher queryMatcher = checkQueryValidity(query);
         this.query = query;
         this.keyspace = queryMatcher.group(1);
