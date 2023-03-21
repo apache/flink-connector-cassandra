@@ -147,7 +147,7 @@ public final class SplitsGenerator {
                     addressedTokens.add(distance(tokenRange.rangeStart, tokenRange.rangeEnd));
         }
         // it is < 1 because it is a percentage
-        return Float.valueOf(addressedTokens.divide(partitioner.ringSize).toString());
+        return addressedTokens.divide(partitioner.ringSize).floatValue();
     }
 
     /** Gets the list of token ranges that the table occupies on a given Cassandra node. */
