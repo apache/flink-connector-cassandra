@@ -48,7 +48,6 @@ import static org.apache.flink.connector.cassandra.source.split.SplitsGenerator.
 import static org.apache.flink.connector.testframe.utils.ConnectorTestConstants.DEFAULT_COLLECT_DATA_TIMEOUT;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Test for the Cassandra source. */
 class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
@@ -79,7 +78,7 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
                         CassandraTestEnvironment.KEYSPACE,
                         CassandraTestEnvironment.SPLITS_TABLE,
                         parallelism,
-                        null);
+                        CassandraSource.MAX_SPLIT_MEMORY_SIZE_DEFAULT);
         final CassandraEnumeratorState state = generator.prepareSplits();
 
         // no maxSplitMemorySize specified falling back number of splits = parallelism
@@ -108,7 +107,7 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
                         CassandraTestEnvironment.KEYSPACE,
                         CassandraTestEnvironment.SPLITS_TABLE,
                         parallelism,
-                        null);
+                        CassandraSource.MAX_SPLIT_MEMORY_SIZE_DEFAULT);
         final CassandraEnumeratorState state = generator.prepareSplits();
 
         // no maxSplitMemorySize specified falling back number of splits = parallelism
@@ -153,7 +152,7 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
 
     @TestTemplate
     @DisplayName("Test splitting with a too big split size set")
-    public void testGenerateSplitsWithTableUnderSizesMaximumSplitSize(
+    public void testGenerateSplitsWithTooHighMaximumSplitSize(
             TestEnvironment testEnv,
             DataStreamSourceExternalContext<Pojo> externalContext,
             CheckpointingMode semantic)
@@ -170,33 +169,9 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
         // sanity check to ensure that the size estimates were updated in the Cassandra cluster
         assertThat(generator.estimateTableSize()).isEqualTo(35840L);
         final CassandraEnumeratorState cassandraEnumeratorState = generator.prepareSplits();
-        // tableSize under sizes maxSplitMemorySize falling back to parallelism splits
+        // maxSplitMemorySize is too high compared to table size. Falling back to parallelism splits
+        // too low maxSplitMemorySize is guarded by an assertion > min at source creation
         assertThat(cassandraEnumeratorState.getNumSplitsLeftToGenerate()).isEqualTo(parallelism);
-    }
-
-    @TestTemplate
-    @DisplayName("Test splitting with a too small split size set")
-    public void testGenerateSplitsWithTableOverSizesMaximumSplitSize(
-            TestEnvironment testEnv,
-            DataStreamSourceExternalContext<Pojo> externalContext,
-            CheckpointingMode semantic)
-            throws Exception {
-        final int parallelism = 2;
-        final SplitsGenerator generator =
-                new SplitsGenerator(
-                        MURMUR3PARTITIONER,
-                        cassandraTestEnvironment.getSession(),
-                        CassandraTestEnvironment.KEYSPACE,
-                        CassandraTestEnvironment.SPLITS_TABLE,
-                        parallelism,
-                        1000L);
-        // sanity check to ensure that the size estimates were updated in the Cassandra cluster
-        assertThat(generator.estimateTableSize()).isEqualTo(35840L);
-        // we prevent creating too many splits by just preventing a too low maxSplitMemorySize
-        assertThatThrownBy(generator::prepareSplits)
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("maxSplitMemorySize")
-                .hasMessageContaining("is below minimum");
     }
 
     // overridden to use unordered checks

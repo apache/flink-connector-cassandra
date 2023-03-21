@@ -107,8 +107,7 @@ public final class CassandraSplitEnumerator
     @Override
     public void addSplitsBack(List<CassandraSplit> splits, int subtaskId) {
         // splits that were assigned to a failed reader and that were not part of a checkpoint, so
-        // after
-        // restoration, they need to be reassigned.
+        // after restoration, they need to be reassigned
         state.addSplitsBack(splits);
     }
 

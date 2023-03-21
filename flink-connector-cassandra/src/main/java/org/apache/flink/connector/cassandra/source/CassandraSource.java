@@ -31,6 +31,7 @@ import org.apache.flink.api.connector.source.SplitEnumerator;
 import org.apache.flink.api.connector.source.SplitEnumeratorContext;
 import org.apache.flink.api.java.ClosureCleaner;
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
+import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.connector.cassandra.source.enumerator.CassandraEnumeratorState;
 import org.apache.flink.connector.cassandra.source.enumerator.CassandraEnumeratorStateSerializer;
 import org.apache.flink.connector.cassandra.source.enumerator.CassandraSplitEnumerator;
@@ -40,8 +41,6 @@ import org.apache.flink.connector.cassandra.source.split.CassandraSplitSerialize
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
 import org.apache.flink.streaming.connectors.cassandra.MapperOptions;
-
-import javax.annotation.Nullable;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -100,8 +99,10 @@ public class CassandraSource<OUT>
     private final String table;
     private final MapperOptions mapperOptions;
 
-    @Nullable private final Long maxSplitMemorySize;
-    private static final Long MIN_SPLIT_MEMORY_SIZE = 10_000_000L; // 10 MB
+    private final Long maxSplitMemorySize;
+    private static final Long MIN_SPLIT_MEMORY_SIZE_DEFAULT = MemorySize.ofMebiBytes(10).getBytes();
+    public static final Long MAX_SPLIT_MEMORY_SIZE_DEFAULT =
+            MemorySize.ofMebiBytes(1000).getBytes();
 
     public CassandraSource(
             ClusterBuilder clusterBuilder,
@@ -118,23 +119,20 @@ public class CassandraSource<OUT>
             String query,
             MapperOptions mapperOptions) {
         checkNotNull(clusterBuilder, "ClusterBuilder required but not provided");
-        checkState(
-                maxSplitMemorySize == null || maxSplitMemorySize > 0,
-                "Max split size in bytes provided but set to an invalid value {}",
-                maxSplitMemorySize);
         checkNotNull(pojoClass, "POJO class required but not provided");
         checkNotNull(query, "query required but not provided");
         checkState(
-                maxSplitMemorySize == null || maxSplitMemorySize >= MIN_SPLIT_MEMORY_SIZE,
+                maxSplitMemorySize == null || maxSplitMemorySize >= MIN_SPLIT_MEMORY_SIZE_DEFAULT,
                 "Defined maxSplitMemorySize (%s) is below minimum (%s)",
                 maxSplitMemorySize,
-                MIN_SPLIT_MEMORY_SIZE);
+                MIN_SPLIT_MEMORY_SIZE_DEFAULT);
+        this.maxSplitMemorySize =
+                maxSplitMemorySize == null ? MAX_SPLIT_MEMORY_SIZE_DEFAULT : maxSplitMemorySize;
         final Matcher queryMatcher = checkQueryValidity(query);
         this.query = query;
         keyspace = queryMatcher.group(1);
         table = queryMatcher.group(2);
         this.clusterBuilder = clusterBuilder;
-        this.maxSplitMemorySize = maxSplitMemorySize;
         ClosureCleaner.clean(clusterBuilder, ExecutionConfig.ClosureCleanerLevel.RECURSIVE, true);
         this.pojoClass = pojoClass;
         this.mapperOptions = mapperOptions;

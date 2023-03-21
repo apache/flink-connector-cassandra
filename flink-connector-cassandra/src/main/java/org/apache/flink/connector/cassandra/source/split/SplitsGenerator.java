@@ -19,6 +19,7 @@
 package org.apache.flink.connector.cassandra.source.split;
 
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.connector.cassandra.source.CassandraSource;
 import org.apache.flink.connector.cassandra.source.enumerator.CassandraEnumeratorState;
 
 import com.datastax.driver.core.ResultSet;
@@ -26,8 +27,6 @@ import com.datastax.driver.core.Row;
 import com.datastax.driver.core.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import javax.annotation.Nullable;
 
 import java.math.BigInteger;
 import java.util.ArrayDeque;
@@ -48,7 +47,7 @@ public final class SplitsGenerator {
     private final String keyspace;
     private final String table;
     private final int parallelism;
-    @Nullable private final Long maxSplitMemorySize;
+    private final Long maxSplitMemorySize;
 
     public SplitsGenerator(
             CassandraPartitioner partitioner,
@@ -86,41 +85,34 @@ public final class SplitsGenerator {
 
     /**
      * Determine {@code numSplits} based on the estimation of the target table size and user defined
-     * {@code maxSplitMemorySize}. Provide fallbacks when table size is unavailable, too few or too
-     * many splits are calculated.
+     * {@code maxSplitMemorySize} (or {@link CassandraSource#MAX_SPLIT_MEMORY_SIZE_DEFAULT} if not
+     * defined). Provide fallbacks when table size is unavailable, too few splits are calculated.
      */
     private long decideOnNumSplits() {
         long numSplits;
-        if (maxSplitMemorySize != null) {
-            final long estimateTableSize = estimateTableSize();
-            if (estimateTableSize == 0) { // size estimates unavailable
-                LOG.info(
-                        "Cassandra size estimates are not available for {}.{} table. Creating as many splits as parallelism ({})",
-                        keyspace,
-                        table,
-                        parallelism);
-                numSplits = parallelism;
-            } else {
-                LOG.debug(
-                        "Estimated size for {}.{} table is {} bytes",
-                        keyspace,
-                        table,
-                        estimateTableSize);
-                numSplits =
-                        estimateTableSize / maxSplitMemorySize == 0
-                                ? parallelism // estimateTableSize under sizes maxSplitMemorySize
-                                // creating as many splits as parallelism
-                                : estimateTableSize / maxSplitMemorySize;
-                LOG.info(
-                        "maxSplitMemorySize set value ({}) leads to the creation of {} splits",
-                        maxSplitMemorySize,
-                        numSplits);
-            }
-        } else { // maxSplitMemorySize not defined
+        final long estimateTableSize = estimateTableSize();
+        if (estimateTableSize == 0) { // size estimates unavailable
             LOG.info(
-                    "maxSplitMemorySize not set. Creating as many splits as parallelism ({})",
+                    "Cassandra size estimates are not available for {}.{} table. Creating as many splits as parallelism ({})",
+                    keyspace,
+                    table,
                     parallelism);
             numSplits = parallelism;
+        } else { // create estimateTableSize / maxSplitMemorySize splits. Otherwise, create
+            // parallelism splits if that makes too few splits.
+            LOG.debug(
+                    "Estimated size for {}.{} table is {} bytes",
+                    keyspace,
+                    table,
+                    estimateTableSize);
+            numSplits =
+                    estimateTableSize / maxSplitMemorySize == 0
+                            ? parallelism
+                            : estimateTableSize / maxSplitMemorySize;
+            LOG.info(
+                    "maxSplitMemorySize set value ({}) leads to the creation of {} splits",
+                    maxSplitMemorySize,
+                    numSplits);
         }
         return numSplits;
     }
