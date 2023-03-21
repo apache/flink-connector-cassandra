@@ -190,7 +190,7 @@ public final class SplitsGenerator {
      */
     private BigInteger distance(BigInteger token1, BigInteger token2) {
         // token2 > token1
-        if (token2.compareTo(token1) == 1) {
+        if (token2.compareTo(token1) > 0) {
             return token2.subtract(token1);
         } else {
             return token2.subtract(token1).add(partitioner.ringSize);
