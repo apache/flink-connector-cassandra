@@ -61,8 +61,8 @@ class CassandraRecordEmitter<OUT> implements RecordEmitter<CassandraRow, OUT, Ca
     }
 
     private static class SingleRowResultSet implements ResultSet {
-        private CassandraRow cassandraRow;
-        private Row row;
+        private final CassandraRow cassandraRow;
+        private final Row row;
 
         private SingleRowResultSet(CassandraRow cassandraRow) {
             this.cassandraRow = cassandraRow;
