@@ -130,8 +130,8 @@ public class CassandraSource<OUT>
                 maxSplitMemorySize == null ? MAX_SPLIT_MEMORY_SIZE_DEFAULT : maxSplitMemorySize;
         final Matcher queryMatcher = checkQueryValidity(query);
         this.query = query;
-        keyspace = queryMatcher.group(1);
-        table = queryMatcher.group(2);
+        this.keyspace = queryMatcher.group(1);
+        this.table = queryMatcher.group(2);
         this.clusterBuilder = clusterBuilder;
         ClosureCleaner.clean(clusterBuilder, ExecutionConfig.ClosureCleanerLevel.RECURSIVE, true);
         this.pojoClass = pojoClass;
