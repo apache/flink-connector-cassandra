@@ -100,7 +100,7 @@ public class CassandraSource<OUT>
     private final MapperOptions mapperOptions;
 
     private final Long maxSplitMemorySize;
-    private static final Long MIN_SPLIT_MEMORY_SIZE_DEFAULT = MemorySize.ofMebiBytes(10).getBytes();
+    private static final Long MIN_SPLIT_MEMORY_SIZE = MemorySize.ofMebiBytes(10).getBytes();
     public static final Long MAX_SPLIT_MEMORY_SIZE_DEFAULT =
             MemorySize.ofMebiBytes(1000).getBytes();
 
@@ -122,10 +122,10 @@ public class CassandraSource<OUT>
         checkNotNull(pojoClass, "POJO class required but not provided");
         checkNotNull(query, "query required but not provided");
         checkState(
-                maxSplitMemorySize == null || maxSplitMemorySize >= MIN_SPLIT_MEMORY_SIZE_DEFAULT,
+                maxSplitMemorySize == null || maxSplitMemorySize >= MIN_SPLIT_MEMORY_SIZE,
                 "Defined maxSplitMemorySize (%s) is below minimum (%s)",
                 maxSplitMemorySize,
-                MIN_SPLIT_MEMORY_SIZE_DEFAULT);
+                MIN_SPLIT_MEMORY_SIZE);
         this.maxSplitMemorySize =
                 maxSplitMemorySize == null ? MAX_SPLIT_MEMORY_SIZE_DEFAULT : maxSplitMemorySize;
         final Matcher queryMatcher = checkQueryValidity(query);
