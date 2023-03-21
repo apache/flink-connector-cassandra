@@ -18,6 +18,7 @@
 
 package org.apache.flink.connector.cassandra.source.split;
 
+import org.apache.flink.connector.cassandra.source.utils.BigIntegerSerializationUtils;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.core.memory.DataInputDeserializer;
 import org.apache.flink.core.memory.DataOutputSerializer;
@@ -44,12 +45,8 @@ public class CassandraSplitSerializer implements SimpleVersionedSerializer<Cassa
     @Override
     public byte[] serialize(CassandraSplit cassandraSplit) throws IOException {
         final DataOutputSerializer out = SERIALIZER_CACHE.get();
-        final byte[] ringRangeStart = cassandraSplit.getRingRangeStart().toByteArray();
-        out.writeInt(ringRangeStart.length);
-        out.write(ringRangeStart);
-        final byte[] ringRangeEnd = cassandraSplit.getRingRangeEnd().toByteArray();
-        out.writeInt(ringRangeEnd.length);
-        out.write(ringRangeEnd);
+        BigIntegerSerializationUtils.write(cassandraSplit.getRingRangeStart(), out);
+        BigIntegerSerializationUtils.write(cassandraSplit.getRingRangeEnd(), out);
         final byte[] result = out.getCopyOfBuffer();
         out.clear();
         return result;
@@ -59,18 +56,8 @@ public class CassandraSplitSerializer implements SimpleVersionedSerializer<Cassa
     public CassandraSplit deserialize(int version, byte[] serialized) throws IOException {
         final DataInputDeserializer in = new DataInputDeserializer(serialized);
 
-        final int ringRangeStartSize = in.readInt();
-        final byte[] ringRangeStartBytes = new byte[ringRangeStartSize];
-        if (in.read(ringRangeStartBytes) == -1) {
-            throw new IOException("EOF received while deserializing CassandraSplit ringRangeStart");
-        }
-        final BigInteger ringRangeStart = new BigInteger(ringRangeStartBytes);
-        final int ringRangeEndSize = in.readInt();
-        final byte[] ringRangeEndBytes = new byte[ringRangeEndSize];
-        if (in.read(ringRangeEndBytes) == -1) {
-            throw new IOException("EOF received while deserializing CassandraSplit ringRangeEnd");
-        }
-        final BigInteger ringRangeEnd = new BigInteger(ringRangeEndBytes);
+        final BigInteger ringRangeStart = BigIntegerSerializationUtils.read(in);
+        final BigInteger ringRangeEnd = BigIntegerSerializationUtils.read(in);
         return new CassandraSplit(ringRangeStart, ringRangeEnd);
     }
 }

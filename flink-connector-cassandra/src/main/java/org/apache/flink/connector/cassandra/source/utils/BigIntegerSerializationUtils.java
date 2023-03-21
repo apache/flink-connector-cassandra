@@ -18,26 +18,23 @@
 
 package org.apache.flink.connector.cassandra.source.utils;
 
-import org.apache.flink.util.IOUtils;
-
+import java.io.DataInput;
+import java.io.DataOutput;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.math.BigInteger;
 
 /** Utils for BigInteger reading and writing in serde context. */
 public class BigIntegerSerializationUtils {
-    public static void write(BigInteger bigInteger, ObjectOutputStream objectOutputStream)
-            throws IOException {
+    public static void write(BigInteger bigInteger, DataOutput output) throws IOException {
         final byte[] bigIntegerBytes = bigInteger.toByteArray();
-        objectOutputStream.writeInt(bigIntegerBytes.length);
-        objectOutputStream.write(bigIntegerBytes);
+        output.writeInt(bigIntegerBytes.length);
+        output.write(bigIntegerBytes);
     }
 
-    public static BigInteger read(ObjectInputStream objectInputStream) throws IOException {
-        final int bigIntegerSize = objectInputStream.readInt();
+    public static BigInteger read(DataInput input) throws IOException {
+        final int bigIntegerSize = input.readInt();
         final byte[] bigIntegerBytes = new byte[bigIntegerSize];
-        IOUtils.readFully(objectInputStream, bigIntegerBytes, 0, bigIntegerSize);
+        input.readFully(bigIntegerBytes);
         return new BigInteger(bigIntegerBytes);
     }
 }
