@@ -18,6 +18,8 @@
 
 package org.apache.flink.connector.cassandra.source.utils;
 
+import org.apache.flink.util.IOUtils;
+
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -35,10 +37,7 @@ public class BigIntegerSerializationUtils {
     public static BigInteger read(ObjectInputStream objectInputStream) throws IOException {
         final int bigIntegerSize = objectInputStream.readInt();
         final byte[] bigIntegerBytes = new byte[bigIntegerSize];
-        if (objectInputStream.read(bigIntegerBytes) == -1) {
-            throw new IOException(
-                    "EOF received while deserializing cassandraEnumeratorState.increment");
-        }
+        IOUtils.readFully(objectInputStream, bigIntegerBytes, 0, bigIntegerSize);
         return new BigInteger(bigIntegerBytes);
     }
 }
