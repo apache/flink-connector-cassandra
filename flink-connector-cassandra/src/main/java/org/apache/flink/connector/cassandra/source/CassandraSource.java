@@ -101,8 +101,7 @@ public class CassandraSource<OUT>
 
     private final long maxSplitMemorySize;
     private static final long MIN_SPLIT_MEMORY_SIZE = MemorySize.ofMebiBytes(10).getBytes();
-    public static final long MAX_SPLIT_MEMORY_SIZE_DEFAULT =
-            MemorySize.ofMebiBytes(64).getBytes();
+    static final long MAX_SPLIT_MEMORY_SIZE_DEFAULT = MemorySize.ofMebiBytes(64).getBytes();
 
     public CassandraSource(
             ClusterBuilder clusterBuilder,

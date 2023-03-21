@@ -19,7 +19,6 @@
 package org.apache.flink.connector.cassandra.source.split;
 
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.connector.cassandra.source.CassandraSource;
 import org.apache.flink.connector.cassandra.source.enumerator.CassandraEnumeratorState;
 
 import com.datastax.driver.core.ResultSet;
@@ -84,9 +83,9 @@ public final class SplitsGenerator {
     }
 
     /**
-     * Determine {@code numSplits} based on the estimation of the target table size and user defined
-     * {@code maxSplitMemorySize} (or {@link CassandraSource#MAX_SPLIT_MEMORY_SIZE_DEFAULT} if not
-     * defined). Provide fallbacks when table size is unavailable, too few splits are calculated.
+     * Determine {@code numSplits} based on the estimation of the target table size and configured
+     * {@code maxSplitMemorySize}. Provide fallbacks when table size is unavailable, too few splits
+     * are calculated.
      */
     private long decideOnNumSplits() {
         long numSplits;
