@@ -43,7 +43,7 @@ under the License.
 
 	<properties>
 		<flink.version>1.17.0</flink.version>
-		<japicmp.referenceVersion>1.16.0</japicmp.referenceVersion>
+		<japicmp.referenceVersion>3.0.0-1.16</japicmp.referenceVersion>
 	</properties>
 
 	<modules>
