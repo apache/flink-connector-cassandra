@@ -20,11 +20,10 @@ package org.apache.flink.batch.connectors.cassandra;
 import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
 import org.apache.flink.util.Preconditions;
 
-import org.apache.flink.shaded.guava30.com.google.common.base.Strings;
-
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.ResultSetFuture;
+import com.google.common.base.Strings;
 
 import java.time.Duration;
 import java.util.concurrent.CompletionStage;
