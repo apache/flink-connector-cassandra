@@ -37,7 +37,6 @@ under the License.
 
 	<!-- Allow users to pass custom connector versions -->
 	<properties>
-		<flink.shaded.version>16.1</flink.shaded.version>
 		<scala.binary.version>2.12</scala.binary.version>
 		<scala-library.version>2.12.7</scala-library.version>
 		<slf4j.version>1.7.36</slf4j.version>
@@ -56,11 +55,6 @@ under the License.
 	</properties>
 
 	<dependencies>
-		<dependency>
-			<groupId>org.apache.flink</groupId>
-			<artifactId>flink-shaded-force-shading</artifactId>
-			<version>${flink.shaded.version}</version>
-		</dependency>
 
 		<!-- Core -->
 
