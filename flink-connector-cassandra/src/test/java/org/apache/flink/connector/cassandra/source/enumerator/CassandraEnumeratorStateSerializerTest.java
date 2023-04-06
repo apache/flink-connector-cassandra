@@ -20,8 +20,7 @@ package org.apache.flink.connector.cassandra.source.enumerator;
 
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 
-import org.apache.flink.shaded.guava30.com.google.common.collect.ImmutableList;
-
+import com.google.common.collect.ImmutableList;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;

@@ -160,6 +160,7 @@ under the License.
 			</exclusions>
 		</dependency>
 
+		<!-- guava already surfaces in the API of cassandra driver so we can use the unshaded one -->
 		<dependency>
 			<groupId>com.google.guava</groupId>
 			<artifactId>guava</artifactId>
