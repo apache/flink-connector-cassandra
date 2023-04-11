@@ -18,6 +18,7 @@
 
 package org.apache.flink.connector.cassandra.source;
 
+import org.apache.flink.connector.cassandra.CassandraTestEnvironment;
 import org.apache.flink.connector.cassandra.source.enumerator.CassandraEnumeratorState;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 import org.apache.flink.connector.cassandra.source.split.SplitsGenerator;
