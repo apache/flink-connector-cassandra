@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package org.apache.flink.connector.cassandra.source;
+package org.apache.flink.connector.cassandra;
 
 import org.apache.flink.connector.testframe.TestResource;
 import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
@@ -24,10 +24,10 @@ import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.QueryOptions;
+import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.SocketOptions;
-import com.datastax.driver.core.Statement;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,14 +56,14 @@ public class CassandraTestEnvironment implements TestResource {
     // flushing mem table to SS tables is an asynchronous operation that may take a while
     private static final long FLUSH_MEMTABLES_DELAY = 30_000L;
 
-    static final String KEYSPACE = "flink";
+    public static final String KEYSPACE = "flink";
 
     private static final String CREATE_KEYSPACE_QUERY =
             "CREATE KEYSPACE "
                     + KEYSPACE
                     + " WITH replication= {'class':'SimpleStrategy', 'replication_factor':1};";
 
-    static final String SPLITS_TABLE = "flinksplits";
+    public static final String SPLITS_TABLE = "flinksplits";
     private static final String CREATE_SPLITS_TABLE_QUERY =
             "CREATE TABLE " + KEYSPACE + "." + SPLITS_TABLE + " (id int PRIMARY KEY, counter int);";
     private static final String INSERT_INTO_FLINK_SPLITS =
@@ -75,7 +75,8 @@ public class CassandraTestEnvironment implements TestResource {
     boolean insertTestDataForSplitSizeTests;
     private Cluster cluster;
     private Session session;
-    private ClusterBuilder clusterBuilder;
+    private ClusterBuilder builderForReading;
+    private ClusterBuilder builderForWriting;
 
     public CassandraTestEnvironment(boolean insertTestDataForSplitSizeTests) {
         this.insertTestDataForSplitSizeTests = insertTestDataForSplitSizeTests;
@@ -115,14 +116,21 @@ public class CassandraTestEnvironment implements TestResource {
                 OutputFrame.OutputType.STDOUT);
 
         cluster = cassandraContainer.getCluster();
-        clusterBuilder =
+        // ConsistencyLevel.ONE is the minimum level for reading
+        builderForReading =
                 createBuilderWithConsistencyLevel(
                         ConsistencyLevel.ONE,
                         cassandraContainer.getHost(),
                         cassandraContainer.getMappedPort(CQL_PORT));
 
+        // Lower consistency level ANY is only available for writing.
+        builderForWriting =
+                createBuilderWithConsistencyLevel(
+                        ConsistencyLevel.ANY,
+                        cassandraContainer.getHost(),
+                        cassandraContainer.getMappedPort(CQL_PORT));
         session = cluster.connect();
-        session.execute(requestWithTimeout(CREATE_KEYSPACE_QUERY));
+        executeRequestWithTimeout(CREATE_KEYSPACE_QUERY);
         // create a dedicated table for split size tests (to avoid having to flush with each test)
         if (insertTestDataForSplitSizeTests) {
             insertTestDataForSplitSizeTests();
@@ -130,9 +138,9 @@ public class CassandraTestEnvironment implements TestResource {
     }
 
     private void insertTestDataForSplitSizeTests() throws Exception {
-        session.execute(requestWithTimeout(CREATE_SPLITS_TABLE_QUERY));
+        executeRequestWithTimeout(CREATE_SPLITS_TABLE_QUERY);
         for (int i = 0; i < NB_SPLITS_RECORDS; i++) {
-            session.execute(requestWithTimeout(String.format(INSERT_INTO_FLINK_SPLITS, i, i)));
+            executeRequestWithTimeout(String.format(INSERT_INTO_FLINK_SPLITS, i, i));
         }
         flushMemTables(SPLITS_TABLE);
     }
@@ -182,12 +190,17 @@ public class CassandraTestEnvironment implements TestResource {
         Thread.sleep(FLUSH_MEMTABLES_DELAY);
     }
 
-    static Statement requestWithTimeout(String query) {
-        return new SimpleStatement(query).setReadTimeoutMillis(READ_TIMEOUT_MILLIS);
+    public ResultSet executeRequestWithTimeout(String query) {
+        return session.execute(
+                new SimpleStatement(query).setReadTimeoutMillis(READ_TIMEOUT_MILLIS));
     }
 
-    public ClusterBuilder getClusterBuilder() {
-        return clusterBuilder;
+    public ClusterBuilder getBuilderForReading() {
+        return builderForReading;
+    }
+
+    public ClusterBuilder getBuilderForWriting() {
+        return builderForWriting;
     }
 
     public Session getSession() {
