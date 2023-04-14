@@ -29,7 +29,9 @@ import com.tngtech.archunit.junit.ArchTests;
 @AnalyzeClasses(
         packages = {
             "org.apache.flink.batch.connectors.cassandra",
-            "org.apache.flink.streaming.connectors.cassandra"
+            "org.apache.flink.streaming.connectors.cassandra",
+            "org.apache.flink.connector.cassandra",
+            "org.apache.flink.connectors.cassandra"
         },
         importOptions = {
             ImportOption.OnlyIncludeTests.class,
