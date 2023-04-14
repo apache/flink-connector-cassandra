@@ -22,7 +22,6 @@ import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplitSerializer;
 import org.apache.flink.connector.cassandra.source.utils.BigIntegerSerializationUtils;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
-import org.apache.flink.util.IOUtils;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -87,7 +86,7 @@ public class CassandraEnumeratorStateSerializer
             for (int i = 0; i < splitsToReassignSize; i++) {
                 final int splitSize = objectInputStream.readInt();
                 final byte[] splitBytes = new byte[splitSize];
-                IOUtils.readFully(objectInputStream, splitBytes, 0, splitSize);
+                objectInputStream.readFully(splitBytes);
                 final CassandraSplit split =
                         CassandraSplitSerializer.INSTANCE.deserialize(
                                 CassandraSplitSerializer.CURRENT_VERSION, splitBytes);
