@@ -62,10 +62,7 @@ class CassandraSinkBaseTest {
                         new ClusterBuilder() {
                             @Override
                             protected Cluster buildCluster(Cluster.Builder builder) {
-                                return builder.addContactPoint("127.0.0.1")
-                                        .withoutJMXReporting()
-                                        .withoutMetrics()
-                                        .build();
+                                return builder.addContactPoint("127.0.0.1").build();
                             }
                         },
                         CassandraSinkBaseConfig.newBuilder().build(),

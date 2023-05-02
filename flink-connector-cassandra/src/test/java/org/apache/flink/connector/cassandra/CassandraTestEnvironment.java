@@ -173,8 +173,6 @@ public class CassandraTestEnvironment implements TestResource {
                                         // default timeout x3 and higher than
                                         // request_timeout_in_ms at the cluster level
                                         .setReadTimeoutMillis(READ_TIMEOUT_MILLIS))
-                        .withoutJMXReporting()
-                        .withoutMetrics()
                         .build();
             }
         };
