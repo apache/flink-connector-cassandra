@@ -24,12 +24,13 @@ import java.io.Serializable;
 
 /**
  * This class is used to configure a {@link com.datastax.driver.core.Cluster} after deployment. The
- * cluster represents the connection that will be established to Cassandra.
+ * cluster represents the connection that will be established to Cassandra. Cassandra driver metrics
+ * are not integrated with Flink metrics, so they are disabled.
  */
 public abstract class ClusterBuilder implements Serializable {
 
     public Cluster getCluster() {
-        return buildCluster(Cluster.builder());
+        return buildCluster(Cluster.builder().withoutMetrics());
     }
 
     /**
