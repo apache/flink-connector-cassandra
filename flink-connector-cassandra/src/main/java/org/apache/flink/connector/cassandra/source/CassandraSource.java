@@ -70,7 +70,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  *                   .build();
  *   }
  * };
- * long maxSplitMemorySize = ... //optional max split size in bytes. If not set, maxSplitMemorySize = tableSize / parallelism
+ * long maxSplitMemorySize = ... //optional max split size in bytes minimum is 10MB. If not set, maxSplitMemorySize = 64 MB
  * Source cassandraSource = new CassandraSource(clusterBuilder,
  *                                              maxSplitMemorySize,
  *                                              Pojo.class,
@@ -80,6 +80,10 @@ import static org.apache.flink.util.Preconditions.checkState;
  * DataStream<Pojo> stream = env.fromSource(cassandraSource, WatermarkStrategy.noWatermarks(),
  * "CassandraSource");
  * }</pre>
+ *
+ * <p>Regarding performances, the source splits table data like this: numSplits =
+ * tableSize/maxSplitMemorySize. If tableSize cannot be determined or previous numSplits computation
+ * makes too few splits, falling back to numSplits=parallelism
  */
 @PublicEvolving
 public class CassandraSource<OUT>
