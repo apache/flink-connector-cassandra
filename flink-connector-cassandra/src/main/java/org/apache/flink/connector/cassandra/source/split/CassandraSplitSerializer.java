@@ -20,18 +20,18 @@ package org.apache.flink.connector.cassandra.source.split;
 
 import org.apache.flink.connector.cassandra.source.utils.BigIntegerSerializationUtils;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
-import org.apache.flink.core.memory.DataInputDeserializer;
-import org.apache.flink.core.memory.DataOutputSerializer;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.math.BigInteger;
 
 /** Serializer for {@link CassandraSplit}. */
 public class CassandraSplitSerializer implements SimpleVersionedSerializer<CassandraSplit> {
 
     public static final CassandraSplitSerializer INSTANCE = new CassandraSplitSerializer();
-    private static final ThreadLocal<DataOutputSerializer> SERIALIZER_CACHE =
-            ThreadLocal.withInitial(() -> new DataOutputSerializer(64));
 
     public static final int CURRENT_VERSION = 0;
 
@@ -44,20 +44,27 @@ public class CassandraSplitSerializer implements SimpleVersionedSerializer<Cassa
 
     @Override
     public byte[] serialize(CassandraSplit cassandraSplit) throws IOException {
-        final DataOutputSerializer out = SERIALIZER_CACHE.get();
-        BigIntegerSerializationUtils.write(cassandraSplit.getRingRangeStart(), out);
-        BigIntegerSerializationUtils.write(cassandraSplit.getRingRangeEnd(), out);
-        final byte[] result = out.getCopyOfBuffer();
-        out.clear();
-        return result;
+        try (final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+                final ObjectOutputStream objectOutputStream =
+                        new ObjectOutputStream(byteArrayOutputStream)) {
+            BigIntegerSerializationUtils.write(
+                    cassandraSplit.getRingRangeStart(), objectOutputStream);
+            BigIntegerSerializationUtils.write(
+                    cassandraSplit.getRingRangeEnd(), objectOutputStream);
+            objectOutputStream.flush();
+            return byteArrayOutputStream.toByteArray();
+        }
     }
 
     @Override
     public CassandraSplit deserialize(int version, byte[] serialized) throws IOException {
-        final DataInputDeserializer in = new DataInputDeserializer(serialized);
-
-        final BigInteger ringRangeStart = BigIntegerSerializationUtils.read(in);
-        final BigInteger ringRangeEnd = BigIntegerSerializationUtils.read(in);
-        return new CassandraSplit(ringRangeStart, ringRangeEnd);
+        try (final ByteArrayInputStream byteArrayInputStream =
+                        new ByteArrayInputStream(serialized);
+                final ObjectInputStream objectInputStream =
+                        new ObjectInputStream(byteArrayInputStream)) {
+            final BigInteger ringRangeStart = BigIntegerSerializationUtils.read(objectInputStream);
+            final BigInteger ringRangeEnd = BigIntegerSerializationUtils.read(objectInputStream);
+            return new CassandraSplit(ringRangeStart, ringRangeEnd);
+        }
     }
 }
