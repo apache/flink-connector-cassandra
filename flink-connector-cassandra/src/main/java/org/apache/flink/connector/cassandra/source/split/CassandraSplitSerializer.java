@@ -44,16 +44,15 @@ public class CassandraSplitSerializer implements SimpleVersionedSerializer<Cassa
 
     @Override
     public byte[] serialize(CassandraSplit cassandraSplit) throws IOException {
-        try (final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-                final ObjectOutputStream objectOutputStream =
-                        new ObjectOutputStream(byteArrayOutputStream)) {
+        final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+        try (final ObjectOutputStream objectOutputStream =
+                new ObjectOutputStream(byteArrayOutputStream)) {
             BigIntegerSerializationUtils.write(
                     cassandraSplit.getRingRangeStart(), objectOutputStream);
             BigIntegerSerializationUtils.write(
                     cassandraSplit.getRingRangeEnd(), objectOutputStream);
-            objectOutputStream.flush();
-            return byteArrayOutputStream.toByteArray();
         }
+        return byteArrayOutputStream.toByteArray();
     }
 
     @Override

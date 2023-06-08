@@ -49,9 +49,9 @@ public class CassandraEnumeratorStateSerializer
 
     @Override
     public byte[] serialize(CassandraEnumeratorState cassandraEnumeratorState) throws IOException {
-        try (final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-                final ObjectOutputStream objectOutputStream =
-                        new ObjectOutputStream(byteArrayOutputStream)) {
+        final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+        try (final ObjectOutputStream objectOutputStream =
+                new ObjectOutputStream(byteArrayOutputStream)) {
             final Queue<CassandraSplit> splitsToReassign =
                     cassandraEnumeratorState.getSplitsToReassign();
             objectOutputStream.writeInt(splitsToReassign.size());
@@ -69,10 +69,8 @@ public class CassandraEnumeratorStateSerializer
                     cassandraEnumeratorState.getStartToken(), objectOutputStream);
             BigIntegerSerializationUtils.write(
                     cassandraEnumeratorState.getMaxToken(), objectOutputStream);
-
-            objectOutputStream.flush();
-            return byteArrayOutputStream.toByteArray();
         }
+        return byteArrayOutputStream.toByteArray();
     }
 
     @Override
