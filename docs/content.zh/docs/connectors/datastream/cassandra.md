@@ -35,7 +35,7 @@ This connector provides sinks that writes data into a [Apache Cassandra](https:/
 
 To use this connector, add the following dependency to your project:
 
-{{< artifact flink-connector-cassandra withScalaVersion >}}
+{{< connector_artifact flink-connector-cassandra cassandra withScalaVersion >}}
 
 Note that the streaming connectors are currently __NOT__ part of the binary distribution. See how to link with them for cluster execution [here]({{< ref "docs/dev/configuration/overview" >}}).
 
