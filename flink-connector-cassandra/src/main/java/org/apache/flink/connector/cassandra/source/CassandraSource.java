@@ -90,7 +90,7 @@ public class CassandraSource<OUT>
         implements Source<OUT, CassandraSplit, CassandraEnumeratorState>, ResultTypeQueryable<OUT> {
 
     public static final Pattern CQL_PROHIBITED_CLAUSES_REGEXP =
-            Pattern.compile("(?i).*(AVG|COUNT|MIN|MAX|SUM|ORDER|GROUP BY).*");
+            Pattern.compile("(?i).*(AVG|COUNT|MIN|MAX|SUM|ORDER BY|GROUP BY).*");
     public static final Pattern SELECT_REGEXP =
             Pattern.compile("(?i)select .+ from (\\w+)\\.(\\w+).*;$");
 
