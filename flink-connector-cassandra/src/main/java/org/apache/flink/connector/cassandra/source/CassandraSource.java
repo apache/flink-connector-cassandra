@@ -70,7 +70,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  *                   .build();
  *   }
  * };
- * long maxSplitMemorySize = ... //optional max split size in bytes minimum is 10MB. If not set, maxSplitMemorySize = 64 MB
+ * long maxSplitMemorySize = ... //optional max split size in bytes minimum is 1MB. If not set, maxSplitMemorySize = 64 MB
  * Source cassandraSource = new CassandraSource(clusterBuilder,
  *                                              maxSplitMemorySize,
  *                                              Pojo.class,
@@ -104,7 +104,7 @@ public class CassandraSource<OUT>
     private final MapperOptions mapperOptions;
 
     private final long maxSplitMemorySize;
-    private static final long MIN_SPLIT_MEMORY_SIZE = MemorySize.ofMebiBytes(10).getBytes();
+    private static final long MIN_SPLIT_MEMORY_SIZE = MemorySize.ofMebiBytes(1).getBytes();
     static final long MAX_SPLIT_MEMORY_SIZE_DEFAULT = MemorySize.ofMebiBytes(64).getBytes();
 
     public CassandraSource(

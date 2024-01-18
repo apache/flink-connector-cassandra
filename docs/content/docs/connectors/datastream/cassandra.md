@@ -65,7 +65,7 @@ ClusterBuilder clusterBuilder = new ClusterBuilder() {
                       .build();    
     }
 };  
-long maxSplitMemorySize = ... //optional max split size in bytes minimum is 10MB. If not set, maxSplitMemorySize = 64 MB
+long maxSplitMemorySize = ... //optional max split size in bytes minimum is 1MB. If not set, maxSplitMemorySize = 64 MB
 Source cassandraSource = new CassandraSource(clusterBuilder, 
                                              maxSplitMemorySize, 
                                              Pojo.class, 
