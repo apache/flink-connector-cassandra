@@ -25,11 +25,9 @@ import org.apache.flink.api.common.io.OutputFormat;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
-import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.typeutils.TupleTypeInfo;
 import org.apache.flink.api.java.typeutils.TypeExtractor;
-import org.apache.flink.api.scala.typeutils.CaseClassTypeInfo;
 import org.apache.flink.batch.connectors.cassandra.CassandraInputFormat;
 import org.apache.flink.batch.connectors.cassandra.CassandraPojoInputFormat;
 import org.apache.flink.batch.connectors.cassandra.CassandraPojoOutputFormat;
@@ -38,10 +36,8 @@ import org.apache.flink.batch.connectors.cassandra.CassandraTupleOutputFormat;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.cassandra.CassandraTestEnvironment;
 import org.apache.flink.core.io.InputSplit;
-import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.sink.SinkContextUtil;
 import org.apache.flink.streaming.runtime.operators.WriteAheadSinkTestBase;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.internal.TableEnvironmentInternal;
@@ -69,9 +65,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
-
-import scala.collection.JavaConverters;
-import scala.collection.Seq;
 
 import static org.apache.flink.connector.cassandra.CassandraTestEnvironment.KEYSPACE;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -682,115 +675,5 @@ class CassandraConnectorITCase
                         injectTableName(SELECT_DATA_QUERY));
         List<com.datastax.driver.core.Row> rows = rs.all();
         assertThat(rows).hasSameSizeAs(rowCollection);
-    }
-
-    @Test
-    void testCassandraScalaTupleAtLeastOnceSinkBuilderDetection() throws Exception {
-        Class<scala.Tuple1<String>> c =
-                (Class<scala.Tuple1<String>>) new scala.Tuple1<>("hello").getClass();
-        Seq<TypeInformation<?>> typeInfos =
-                JavaConverters.asScalaBufferConverter(
-                                Collections.<TypeInformation<?>>singletonList(
-                                        BasicTypeInfo.STRING_TYPE_INFO))
-                        .asScala();
-        Seq<String> fieldNames =
-                JavaConverters.asScalaBufferConverter(Collections.singletonList("_1")).asScala();
-
-        CaseClassTypeInfo<scala.Tuple1<String>> typeInfo =
-                new CaseClassTypeInfo<scala.Tuple1<String>>(c, null, typeInfos, fieldNames) {
-                    @Override
-                    public TypeSerializer<scala.Tuple1<String>> createSerializer(
-                            ExecutionConfig config) {
-                        return null;
-                    }
-                };
-
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        DataStream<scala.Tuple1<String>> input =
-                env.fromElements(new scala.Tuple1<>("hello")).returns(typeInfo);
-
-        CassandraSink.CassandraSinkBuilder<scala.Tuple1<String>> sinkBuilder =
-                CassandraSink.addSink(input);
-        assertThat(sinkBuilder).isInstanceOf(CassandraSink.CassandraScalaProductSinkBuilder.class);
-    }
-
-    @Test
-    void testCassandraScalaTupleAtLeastSink() throws Exception {
-        CassandraScalaProductSink<scala.Tuple3<String, Integer, Integer>> sink =
-                new CassandraScalaProductSink<>(
-                        injectTableName(INSERT_DATA_QUERY),
-                        cassandraTestEnvironment.getBuilderForWriting());
-
-        List<scala.Tuple3<String, Integer, Integer>> scalaTupleCollection = new ArrayList<>(20);
-        for (int i = 0; i < 20; i++) {
-            scalaTupleCollection.add(new scala.Tuple3<>(UUID.randomUUID().toString(), i, 0));
-        }
-        try {
-            sink.open(new Configuration());
-            for (scala.Tuple3<String, Integer, Integer> value : scalaTupleCollection) {
-                sink.invoke(value, SinkContextUtil.forTimestamp(0));
-            }
-        } finally {
-            sink.close();
-        }
-
-        ResultSet rs =
-                cassandraTestEnvironment.executeRequestWithTimeout(
-                        injectTableName(SELECT_DATA_QUERY));
-        List<com.datastax.driver.core.Row> rows = rs.all();
-        assertThat(rows).hasSameSizeAs(scalaTupleCollection);
-
-        for (com.datastax.driver.core.Row row : rows) {
-            scalaTupleCollection.remove(
-                    new scala.Tuple3<>(
-                            row.getString(TUPLE_ID_FIELD),
-                            row.getInt(TUPLE_COUNTER_FIELD),
-                            row.getInt(TUPLE_BATCHID_FIELD)));
-        }
-        assertThat(scalaTupleCollection).isEmpty();
-    }
-
-    @Test
-    void testCassandraScalaTuplePartialColumnUpdate() throws Exception {
-        CassandraSinkBaseConfig config =
-                CassandraSinkBaseConfig.newBuilder().setIgnoreNullFields(true).build();
-        CassandraScalaProductSink<scala.Tuple3<String, Integer, Integer>> sink =
-                new CassandraScalaProductSink<>(
-                        injectTableName(INSERT_DATA_QUERY),
-                        cassandraTestEnvironment.getBuilderForWriting(),
-                        config);
-
-        String id = UUID.randomUUID().toString();
-        Integer counter = 1;
-        Integer batchId = 0;
-
-        // Send partial records across multiple request
-        scala.Tuple3<String, Integer, Integer> scalaTupleRecordFirst =
-                new scala.Tuple3<>(id, counter, null);
-        scala.Tuple3<String, Integer, Integer> scalaTupleRecordSecond =
-                new scala.Tuple3<>(id, null, batchId);
-
-        try {
-            sink.open(new Configuration());
-            sink.invoke(scalaTupleRecordFirst, SinkContextUtil.forTimestamp(0));
-            sink.invoke(scalaTupleRecordSecond, SinkContextUtil.forTimestamp(0));
-        } finally {
-            sink.close();
-        }
-
-        ResultSet rs =
-                cassandraTestEnvironment.executeRequestWithTimeout(
-                        injectTableName(SELECT_DATA_QUERY));
-        List<com.datastax.driver.core.Row> rows = rs.all();
-        assertThat(rows).hasSize(1);
-        // Since nulls are ignored, we should be reading one complete record
-        for (com.datastax.driver.core.Row row : rows) {
-            assertThat(
-                            new scala.Tuple3<>(
-                                    row.getString(TUPLE_ID_FIELD),
-                                    row.getInt(TUPLE_COUNTER_FIELD),
-                                    row.getInt(TUPLE_BATCHID_FIELD)))
-                    .isEqualTo(new scala.Tuple3<>(id, counter, batchId));
-        }
     }
 }
