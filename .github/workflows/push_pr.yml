@@ -22,10 +22,15 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  compile_and_test:
-    strategy:
-      matrix:
-        flink: [1.16.2, 1.17.1]
+  # tests that current PR does not break compatibility with last 2 minor released versions of Flink
+  non-main-version:
     uses: apache/flink-connector-shared-utils/.github/workflows/ci.yml@ci_utils
     with:
-      flink_version: ${{ matrix.flink }}
+      flink_version: 1.17.2
+      skip_archunit_tests: true
+  main-version:
+    uses: apache/flink-connector-shared-utils/.github/workflows/ci.yml@ci_utils
+    with:
+      flink_version: 1.18.0
+
+
