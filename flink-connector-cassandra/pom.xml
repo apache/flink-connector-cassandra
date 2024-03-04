@@ -238,6 +238,13 @@ under the License.
 			<artifactId>flink-test-utils-junit</artifactId>
 			<version>${flink.version}</version>
 			<scope>test</scope>
+			<!-- For dependency convergence-->
+			<exclusions>
+				<exclusion>
+					<groupId>org.testcontainers</groupId>
+					<artifactId>testcontainers</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 
 		<dependency>
@@ -275,6 +282,13 @@ under the License.
 			<artifactId>flink-connector-test-utils</artifactId>
 			<version>${flink.version}</version>
 			<scope>test</scope>
+			<!-- For dependency convergence-->
+			<exclusions>
+				<exclusion>
+					<groupId>org.testcontainers</groupId>
+					<artifactId>testcontainers</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 
 		<dependency>
