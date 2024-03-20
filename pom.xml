@@ -43,11 +43,13 @@ under the License.
 
 	<properties>
 		<flink.version>1.18.0</flink.version>
+		<scala.binary.version>2.12</scala.binary.version>
 		<japicmp.referenceVersion>3.0.0-1.16</japicmp.referenceVersion>
 	</properties>
 
 	<modules>
 		<module>flink-connector-cassandra</module>
+		<module>flink-python</module>
 	</modules>
 
 	<build>
