@@ -22,36 +22,24 @@ on:
     - cron: "0 0 * * 0"
   workflow_dispatch:
 jobs:
-  # tests that current connector iteration does not break compatibility with last 2 minor released Flink versions
-  non-main-version:
+  compile_and_test:
     if: github.repository_owner == 'apache'
+    strategy:
+      matrix:
+        flink_branches: [{
+          flink: 1.18-SNAPSHOT,
+          branch: main
+        }, {
+          flink: 1.19-SNAPSHOT,
+          branch: main
+        }, {
+          flink: 1.20-SNAPSHOT,
+          branch: main
+        }]
     uses: apache/flink-connector-shared-utils/.github/workflows/ci.yml@ci_utils
     with:
-      flink_version: 1.17.2
-      connector_branch: main
-      skip_archunit_tests: true
-  main-version:
-    if: github.repository_owner == 'apache'
-    uses: apache/flink-connector-shared-utils/.github/workflows/ci.yml@ci_utils
-    with:
-      flink_version: 1.18.0
-      connector_branch: main
-  # tests that current Flink iterations do not break compatibility with current connector iteration
-  # (cannot test with released connector version because this version cannot skip archunit tests for now)
-  current-snapshot:
-    if: github.repository_owner == 'apache'
-    uses: apache/flink-connector-shared-utils/.github/workflows/ci.yml@ci_utils
-    with:
-      flink_version: 1.19-SNAPSHOT
-      connector_branch: main
-      skip_archunit_tests: true
-      run_dependency_convergence: false
-  previous-snapshot:
-    if: github.repository_owner == 'apache'
-    uses: apache/flink-connector-shared-utils/.github/workflows/ci.yml@ci_utils
-    with:
-      flink_version: 1.18-SNAPSHOT
-      connector_branch: main
-      skip_archunit_tests: true
+      flink_version: ${{ matrix.flink_branches.flink }}
+      connector_branch: ${{ matrix.flink_branches.branch }}
+      jdk_version: ${{ matrix.flink_branches.jdk || '8, 11, 17' }}
       run_dependency_convergence: false
 
