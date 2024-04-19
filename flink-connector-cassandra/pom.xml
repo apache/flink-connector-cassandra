@@ -51,7 +51,6 @@ under the License.
 
 		<!--driver 3.x works with 3.x and 4.x versions of Cassandra but driver 4.x is a complete refactoring with different API-->
 		<driver.version>3.11.2</driver.version>
-		<guava.version>19.0</guava.version>
 	</properties>
 
 	<dependencies>
