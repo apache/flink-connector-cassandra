@@ -1,12 +1,10 @@
 ---
-title: Cassandra/ScyllaDB
+title: Cassandra
 weight: 4
 type: docs
 aliases:
   - /dev/connectors/cassandra.html
-  - /dev/connectors/scylladb.html
   - /apis/streaming/connectors/cassandra.html
-  - /apis/streaming/connectors/scylladb.html
 ---
 <!--
 Licensed to the Apache Software Foundation (ASF) under one
@@ -27,9 +25,9 @@ specific language governing permissions and limitations
 under the License.
 -->
 
-# Apache Cassandra/ScyllaDB Connector
+# Apache Cassandra Connector
 
-(This connector provides sinks that writes data into or sources that read from  [Apache Cassandra](https://cassandra.apache.org/) or [ScyllaDB](https://www.scylladb.com) databases.)
+This connector provides sinks that writes data into a [Apache Cassandra](https://cassandra.apache.org/) database.
 
 <!--
   TODO: Perhaps worth mentioning current DataStax Java Driver version to match Cassandra version on user side.
@@ -47,15 +45,9 @@ There are multiple ways to bring up a Cassandra instance on local machine:
 1. Follow the instructions from [Cassandra Getting Started page](http://cassandra.apache.org/doc/latest/getting_started/index.html).
 2. Launch a container running Cassandra from [Official Docker Repository](https://hub.docker.com/_/cassandra/)
 
-## Installing ScyllaDB
-There are multiple ways to bring up a ScyllaDB instance on local machine:
-
-1. Follow the instructions from [ScyllaDB Getting Started page](https://docs.scylladb.com/getting-started/).
-2. Launch a container running ScyllaDB from [Official Docker Repository](https://hub.docker.com/r/scylladb/scylla/)
-
-## Cassandra/ScyllaDB Source
+## Cassandra Source
 Flink provides a [FLIP-27](https://cwiki.apache.org/confluence/display/FLINK/FLIP-27%3A+Refactor+Source+Interface)
-bounded source to read from Cassandra/ScyllaDB and return a collection of entities as `DataStream<Entity>`
+bounded source to read from Cassandra and return a collection of entities as `DataStream<Entity>`.
 An entity is built by Cassandra mapper ([MappingManager](https://javadoc.io/static/com.datastax.cassandra/cassandra-driver-mapping/3.11.2/com/datastax/driver/mapping/MappingManager.html))
 based on a POJO containing annotations (as described in Cassandra object mapper).
 
@@ -86,11 +78,11 @@ Regarding performances, the source splits table data like this:
 
 If tableSize cannot be determined or previous numSplits computation makes too few splits, it falls back to `numSplits = parallelism`
 
-## Cassandra/ScyllaDB Sinks
+## Cassandra Sinks
 
 ### Configurations
 
-Flink's Cassandra/ScyllaDB sink are created by using the static CassandraSink.addSink(DataStream<IN> input) method.
+Flink's Cassandra sink are created by using the static CassandraSink.addSink(DataStream<IN> input) method.
 This method returns a CassandraSinkBuilder, which offers methods to further configure the sink, and finally `build()` the sink instance.
 
 The following configuration methods can be used:
@@ -239,7 +231,7 @@ result.print().setParallelism(1)
 {{< /tabs >}}
 
 
-### Cassandra/ScyllaDB Sink Example for Streaming POJO Data Type
+### Cassandra Sink Example for Streaming POJO Data Type
 An example of streaming a POJO data type and store the same POJO entity back to Cassandra. In addition, this POJO implementation needs to follow [DataStax Java Driver Manual](http://docs.datastax.com/en/developer/java-driver/2.1/manual/object_mapper/creating/) to annotate the class as each field of this entity is mapped to an associated column of the designated table using the DataStax Java Driver `com.datastax.driver.mapping.Mapper` class.
 
 The mapping of each table column can be defined through annotations placed on a field declaration in the Pojo class.  For details of the mapping, please refer to CQL documentation on [Definition of Mapped Classes](http://docs.datastax.com/en/developer/java-driver/3.1/manual/object_mapper/creating/) and [CQL Data types](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cql_data_types_c.html)

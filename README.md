@@ -1,6 +1,6 @@
-# Apache Flink Cassandra(ScyllaDB) Connector
+# Apache Flink Cassandra Connector
 
-This repository contains the official Apache Flink Cassandra(ScyllaDB) connector. ScyllaDB is a drop-in replacement for Apache Cassandra and can be used also by connector just by replacing connection string from Cassandra to ScyllaDB.
+This repository contains the official Apache Flink Cassandra connector.
 
 ## Apache Flink
 
@@ -8,7 +8,7 @@ Apache Flink is an open source stream processing framework with powerful stream-
 
 Learn more about Flink at [https://flink.apache.org/](https://flink.apache.org/)
 
-## Building the Apache Flink Cassandra(ScyllaDB) Connector from Source
+## Building the Apache Flink Cassandra Connector from Source
 
 Prerequisites:
 
