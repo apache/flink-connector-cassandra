@@ -1,6 +1,8 @@
 # Apache Flink Cassandra Connector
 
-This repository contains the official Apache Flink Cassandra connector.
+This repository contains the official Apache Flink Cassandra connector. 
+
+As ScyllaDB is a drop-in replacement for Apache Cassandra and can be used also by connector just by replacing connection string from Cassandra to ScyllaDB.
 
 ## Apache Flink
 
