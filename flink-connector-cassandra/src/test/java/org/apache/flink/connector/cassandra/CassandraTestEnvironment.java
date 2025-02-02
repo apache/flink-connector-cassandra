@@ -32,6 +32,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.CassandraContainer;
+import org.testcontainers.containers.ContainerState;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.output.OutputFrame;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
@@ -48,7 +49,7 @@ import java.net.InetSocketAddress;
 @Testcontainers
 public class CassandraTestEnvironment implements TestResource {
     private static final Logger LOG = LoggerFactory.getLogger(CassandraTestEnvironment.class);
-    private static final String DOCKER_CASSANDRA_IMAGE = "cassandra:4.0.8";
+    public static final String DOCKER_CASSANDRA_IMAGE = "cassandra:4.0.8";
     private static final int CQL_PORT = 9042;
 
     private static final int READ_TIMEOUT_MILLIS = 36000;
@@ -70,7 +71,7 @@ public class CassandraTestEnvironment implements TestResource {
             "INSERT INTO " + KEYSPACE + "." + SPLITS_TABLE + " (id, counter)" + " VALUES (%d, %d)";
     private static final int NB_SPLITS_RECORDS = 1000;
 
-    @Container private final CassandraContainer cassandraContainer;
+    @Container private GenericContainer<?> container;
 
     boolean insertTestDataForSplitSizeTests;
     private Cluster cluster;
@@ -80,10 +81,21 @@ public class CassandraTestEnvironment implements TestResource {
 
     public CassandraTestEnvironment(boolean insertTestDataForSplitSizeTests) {
         this.insertTestDataForSplitSizeTests = insertTestDataForSplitSizeTests;
-        cassandraContainer = new CassandraContainer(DOCKER_CASSANDRA_IMAGE);
+        container = new CassandraContainer(DOCKER_CASSANDRA_IMAGE);
         // more generous timeouts
         addJavaOpts(
-                cassandraContainer,
+                container,
+                "-Dcassandra.request_timeout_in_ms=30000",
+                "-Dcassandra.read_request_timeout_in_ms=15000",
+                "-Dcassandra.write_request_timeout_in_ms=6000");
+    }
+
+    public CassandraTestEnvironment(
+            GenericContainer<?> container, boolean insertTestDataForSplitSizeTests) {
+        this.insertTestDataForSplitSizeTests = insertTestDataForSplitSizeTests;
+        // more generous timeouts
+        addJavaOpts(
+                container,
                 "-Dcassandra.request_timeout_in_ms=30000",
                 "-Dcassandra.read_request_timeout_in_ms=15000",
                 "-Dcassandra.write_request_timeout_in_ms=6000");
@@ -106,29 +118,30 @@ public class CassandraTestEnvironment implements TestResource {
 
     private void startEnv() throws Exception {
         // configure container start to wait until cassandra is ready to receive queries
-        cassandraContainer.waitingFor(new CassandraQueryWaitStrategy());
+        container.waitingFor(new CassandraQueryWaitStrategy());
         // start with retrials
-        cassandraContainer.start();
-        cassandraContainer.followOutput(
+        container.start();
+        container.followOutput(
                 new Slf4jLogConsumer(LOG),
                 OutputFrame.OutputType.END,
                 OutputFrame.OutputType.STDERR,
                 OutputFrame.OutputType.STDOUT);
 
-        cluster = cassandraContainer.getCluster();
+        cluster = getCluster(container);
         // ConsistencyLevel.ONE is the minimum level for reading
         builderForReading =
                 createBuilderWithConsistencyLevel(
                         ConsistencyLevel.ONE,
-                        cassandraContainer.getHost(),
-                        cassandraContainer.getMappedPort(CQL_PORT));
+                        container.getHost(),
+                        container.getMappedPort(CQL_PORT));
 
         // Lower consistency level ANY is only available for writing.
         builderForWriting =
                 createBuilderWithConsistencyLevel(
                         ConsistencyLevel.ANY,
-                        cassandraContainer.getHost(),
-                        cassandraContainer.getMappedPort(CQL_PORT));
+                        container.getHost(),
+                        container.getMappedPort(CQL_PORT));
+
         session = cluster.connect();
         executeRequestWithTimeout(CREATE_KEYSPACE_QUERY);
         // create a dedicated table for split size tests (to avoid having to flush with each test)
@@ -153,7 +166,15 @@ public class CassandraTestEnvironment implements TestResource {
         if (cluster != null) {
             cluster.close();
         }
-        cassandraContainer.stop();
+        container.stop();
+    }
+
+    private Cluster getCluster(ContainerState containerState) {
+        Cluster.Builder builder =
+                Cluster.builder()
+                        .addContactPoint(containerState.getHost())
+                        .withPort(containerState.getMappedPort(CQL_PORT));
+        return builder.build();
     }
 
     private ClusterBuilder createBuilderWithConsistencyLevel(
@@ -184,7 +205,7 @@ public class CassandraTestEnvironment implements TestResource {
      * size_estimates system table.
      */
     void flushMemTables(String table) throws Exception {
-        cassandraContainer.execInContainer("nodetool", "flush", KEYSPACE, table);
+        container.execInContainer("nodetool", "flush", KEYSPACE, table);
         Thread.sleep(FLUSH_MEMTABLES_DELAY);
     }
 

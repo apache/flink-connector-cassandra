@@ -55,12 +55,14 @@ import net.bytebuddy.ByteBuddy;
 import org.assertj.core.api.recursive.comparison.RecursiveComparisonConfiguration;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.testcontainers.junit.jupiter.Testcontainers;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.testcontainers.containers.CassandraContainer;
+import org.testcontainers.containers.GenericContainer;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
@@ -69,29 +71,34 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import scala.collection.JavaConverters;
 import scala.collection.Seq;
 
+import static org.apache.flink.connector.cassandra.CassandraTestEnvironment.DOCKER_CASSANDRA_IMAGE;
 import static org.apache.flink.connector.cassandra.CassandraTestEnvironment.KEYSPACE;
+import static org.apache.flink.streaming.connectors.cassandra.CassandraConnectorITCase.SELECT_DATA_QUERY;
+import static org.apache.flink.streaming.connectors.cassandra.CassandraConnectorITCase.TUPLE_COUNTER_FIELD;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** IT cases for all cassandra sinks. */
 @SuppressWarnings("serial")
-@Testcontainers
 @ExtendWith(RetryExtension.class)
-class CassandraConnectorITCase
-        extends WriteAheadSinkTestBase<
-                Tuple3<String, Integer, Integer>,
-                CassandraTupleWriteAheadSink<Tuple3<String, Integer, Integer>>> {
+class CassandraConnectorITCase {
+    private static Stream<CassandraTestEnvironment> cassandraTestEnvironments() {
+        return Stream.of(cassandraTestEnvironment, scyllaDBTestEnvironment);
+    }
 
     private static final CassandraTestEnvironment cassandraTestEnvironment =
-            new CassandraTestEnvironment(false);
+            new CassandraTestEnvironment(new CassandraContainer<>(DOCKER_CASSANDRA_IMAGE), false);
+    private static final CassandraTestEnvironment scyllaDBTestEnvironment =
+            new CassandraTestEnvironment(new GenericContainer<>("scylladb/scylla:6.2"), false);
 
-    private static final String TABLE_NAME_PREFIX = "flink_";
-    private static final String TABLE_NAME_VARIABLE = "$TABLE";
+    public static final String TABLE_NAME_PREFIX = "flink_";
+    public static final String TABLE_NAME_VARIABLE = "$TABLE";
     private static final String TUPLE_ID_FIELD = "id";
-    private static final String TUPLE_COUNTER_FIELD = "counter";
+    public static final String TUPLE_COUNTER_FIELD = "counter";
     private static final String TUPLE_BATCHID_FIELD = "batch_id";
     private static final String CREATE_TABLE_QUERY =
             "CREATE TABLE "
@@ -105,7 +112,7 @@ class CassandraConnectorITCase
                     + " int, "
                     + TUPLE_BATCHID_FIELD
                     + " int);";
-    private static final String INSERT_DATA_QUERY =
+    public static final String INSERT_DATA_QUERY =
             "INSERT INTO "
                     + KEYSPACE
                     + "."
@@ -117,7 +124,7 @@ class CassandraConnectorITCase
                     + ", "
                     + TUPLE_BATCHID_FIELD
                     + ") VALUES (?, ?, ?)";
-    private static final String SELECT_DATA_QUERY =
+    public static final String SELECT_DATA_QUERY =
             "SELECT * FROM " + KEYSPACE + "." + TABLE_NAME_VARIABLE + ';';
 
     private static final Random random = new Random();
@@ -193,7 +200,8 @@ class CassandraConnectorITCase
     //  Utility methods
     // ------------------------------------------------------------------------
 
-    private <T> List<T> readPojosWithInputFormat(Class<T> annotatedPojoClass) {
+    private <T> List<T> readPojosWithInputFormat(
+            Class<T> annotatedPojoClass, CassandraTestEnvironment cassandraTestEnvironment) {
         final CassandraPojoInputFormat<T> source =
                 new CassandraPojoInputFormat<>(
                         injectTableName(SELECT_DATA_QUERY),
@@ -214,7 +222,9 @@ class CassandraConnectorITCase
         return result;
     }
 
-    private <T> List<T> writePojosWithOutputFormat(Class<T> annotatedPojoClass) throws Exception {
+    private <T> List<T> writePojosWithOutputFormat(
+            Class<T> annotatedPojoClass, CassandraTestEnvironment cassandraTestEnvironment)
+            throws Exception {
         final CassandraPojoOutputFormat<T> sink =
                 new CassandraPojoOutputFormat<>(
                         cassandraTestEnvironment.getBuilderForWriting(),
@@ -254,17 +264,14 @@ class CassandraConnectorITCase
     @BeforeAll
     static void startUp() throws Exception {
         cassandraTestEnvironment.startUp();
+        scyllaDBTestEnvironment.startUp();
     }
 
     @BeforeEach
     void createTable() {
         tableID = random.nextInt(Integer.MAX_VALUE);
         cassandraTestEnvironment.executeRequestWithTimeout(injectTableName(CREATE_TABLE_QUERY));
-    }
-
-    @AfterAll
-    static void tearDown() throws Exception {
-        cassandraTestEnvironment.tearDown();
+        scyllaDBTestEnvironment.executeRequestWithTimeout(injectTableName(CREATE_TABLE_QUERY));
     }
 
     // ------------------------------------------------------------------------
@@ -284,121 +291,10 @@ class CassandraConnectorITCase
     //  Exactly-once Tests
     // ------------------------------------------------------------------------
 
-    @Override
-    protected CassandraTupleWriteAheadSink<Tuple3<String, Integer, Integer>> createSink()
+    @ParameterizedTest
+    @MethodSource("cassandraTestEnvironments")
+    void testCassandraCommitter(CassandraTestEnvironment cassandraTestEnvironment)
             throws Exception {
-        return new CassandraTupleWriteAheadSink<>(
-                injectTableName(INSERT_DATA_QUERY),
-                TypeExtractor.getForObject(new Tuple3<>("", 0, 0))
-                        .createSerializer(new ExecutionConfig()),
-                cassandraTestEnvironment.getBuilderForReading(),
-                new CassandraCommitter(cassandraTestEnvironment.getBuilderForReading()));
-    }
-
-    @Override
-    protected TupleTypeInfo<Tuple3<String, Integer, Integer>> createTypeInfo() {
-        return TupleTypeInfo.getBasicTupleTypeInfo(String.class, Integer.class, Integer.class);
-    }
-
-    @Override
-    protected Tuple3<String, Integer, Integer> generateValue(int counter, int checkpointID) {
-        return new Tuple3<>(UUID.randomUUID().toString(), counter, checkpointID);
-    }
-
-    @Override
-    protected void verifyResultsIdealCircumstances(
-            CassandraTupleWriteAheadSink<Tuple3<String, Integer, Integer>> sink) {
-
-        ResultSet result =
-                cassandraTestEnvironment.executeRequestWithTimeout(
-                        injectTableName(SELECT_DATA_QUERY));
-        ArrayList<Integer> list = new ArrayList<>();
-        for (int x = 1; x <= 60; x++) {
-            list.add(x);
-        }
-
-        for (com.datastax.driver.core.Row s : result) {
-            list.remove(new Integer(s.getInt(TUPLE_COUNTER_FIELD)));
-        }
-        assertThat(list)
-                .as("The following ID's were not found in the ResultSet: " + list)
-                .isEmpty();
-    }
-
-    @Override
-    protected void verifyResultsDataPersistenceUponMissedNotify(
-            CassandraTupleWriteAheadSink<Tuple3<String, Integer, Integer>> sink) {
-
-        ResultSet result =
-                cassandraTestEnvironment.executeRequestWithTimeout(
-                        injectTableName(SELECT_DATA_QUERY));
-        ArrayList<Integer> list = new ArrayList<>();
-        for (int x = 1; x <= 60; x++) {
-            list.add(x);
-        }
-
-        for (com.datastax.driver.core.Row s : result) {
-            list.remove(new Integer(s.getInt(TUPLE_COUNTER_FIELD)));
-        }
-        assertThat(list)
-                .as("The following ID's were not found in the ResultSet: " + list)
-                .isEmpty();
-    }
-
-    @Override
-    protected void verifyResultsDataDiscardingUponRestore(
-            CassandraTupleWriteAheadSink<Tuple3<String, Integer, Integer>> sink) {
-
-        ResultSet result =
-                cassandraTestEnvironment.executeRequestWithTimeout(
-                        injectTableName(SELECT_DATA_QUERY));
-        ArrayList<Integer> list = new ArrayList<>();
-        for (int x = 1; x <= 20; x++) {
-            list.add(x);
-        }
-        for (int x = 41; x <= 60; x++) {
-            list.add(x);
-        }
-
-        for (com.datastax.driver.core.Row s : result) {
-            list.remove(new Integer(s.getInt(TUPLE_COUNTER_FIELD)));
-        }
-        assertThat(list)
-                .as("The following ID's were not found in the ResultSet: " + list)
-                .isEmpty();
-    }
-
-    @Override
-    protected void verifyResultsWhenReScaling(
-            CassandraTupleWriteAheadSink<Tuple3<String, Integer, Integer>> sink,
-            int startElementCounter,
-            int endElementCounter) {
-
-        // IMPORTANT NOTE:
-        //
-        // for cassandra we always have to start from 1 because
-        // all operators will share the same final db
-
-        ArrayList<Integer> expected = new ArrayList<>();
-        for (int i = 1; i <= endElementCounter; i++) {
-            expected.add(i);
-        }
-
-        ArrayList<Integer> actual = new ArrayList<>();
-        ResultSet result =
-                cassandraTestEnvironment.executeRequestWithTimeout(
-                        injectTableName(SELECT_DATA_QUERY));
-
-        for (com.datastax.driver.core.Row s : result) {
-            actual.add(s.getInt(TUPLE_COUNTER_FIELD));
-        }
-
-        Collections.sort(actual);
-        assertThat(actual.toArray()).isEqualTo(expected.toArray());
-    }
-
-    @Test
-    void testCassandraCommitter() throws Exception {
         String jobID = new JobID().toString();
         CassandraCommitter cc1 =
                 new CassandraCommitter(
@@ -461,8 +357,10 @@ class CassandraConnectorITCase
     //  At-least-once Tests
     // ------------------------------------------------------------------------
 
-    @Test
-    void testCassandraTupleAtLeastOnceSink() throws Exception {
+    @ParameterizedTest
+    @MethodSource("cassandraTestEnvironments")
+    void testCassandraTupleAtLeastOnceSink(CassandraTestEnvironment cassandraTestEnvironment)
+            throws Exception {
         CassandraTupleSink<Tuple3<String, Integer, Integer>> sink =
                 new CassandraTupleSink<>(
                         injectTableName(INSERT_DATA_QUERY),
@@ -482,8 +380,10 @@ class CassandraConnectorITCase
         assertThat(rs.all()).hasSize(20);
     }
 
-    @Test
-    void testCassandraRowAtLeastOnceSink() throws Exception {
+    @ParameterizedTest
+    @MethodSource("cassandraTestEnvironments")
+    void testCassandraRowAtLeastOnceSink(CassandraTestEnvironment cassandraTestEnvironment)
+            throws Exception {
         CassandraRowSink sink =
                 new CassandraRowSink(
                         FIELD_TYPES.length,
@@ -504,8 +404,10 @@ class CassandraConnectorITCase
         assertThat(rs.all()).hasSize(20);
     }
 
-    @Test
-    void testCassandraPojoAtLeastOnceSink() throws Exception {
+    @ParameterizedTest
+    @MethodSource("cassandraTestEnvironments")
+    void testCassandraPojoAtLeastOnceSink(CassandraTestEnvironment cassandraTestEnvironment)
+            throws Exception {
         final Class<? extends Pojo> annotatedPojoClass =
                 annotatePojoWithTable(KEYSPACE, TABLE_NAME_PREFIX + tableID);
         writePojos(annotatedPojoClass, null);
@@ -516,8 +418,10 @@ class CassandraConnectorITCase
         assertThat(rs.all()).hasSize(20);
     }
 
-    @Test
-    void testCassandraPojoNoAnnotatedKeyspaceAtLeastOnceSink() throws Exception {
+    @ParameterizedTest
+    @MethodSource("cassandraTestEnvironments")
+    void testCassandraPojoNoAnnotatedKeyspaceAtLeastOnceSink(
+            CassandraTestEnvironment cassandraTestEnvironment) throws Exception {
         final Class<? extends Pojo> annotatedPojoClass =
                 annotatePojoWithTable("", TABLE_NAME_PREFIX + tableID);
         writePojos(annotatedPojoClass, KEYSPACE);
@@ -546,8 +450,10 @@ class CassandraConnectorITCase
         }
     }
 
-    @Test
-    void testCassandraTableSink() throws Exception {
+    @ParameterizedTest
+    @MethodSource("cassandraTestEnvironments")
+    void testCassandraTableSink(CassandraTestEnvironment cassandraTestEnvironment)
+            throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(4);
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
@@ -588,21 +494,23 @@ class CassandraConnectorITCase
         assertThat(input).as("The input data was not completely written to Cassandra").isEmpty();
     }
 
-    private static int retrialsCount = 0;
-
-    @Test
-    void testCassandraBatchPojoFormat() throws Exception {
+    @ParameterizedTest
+    @MethodSource("cassandraTestEnvironments")
+    void testCassandraBatchPojoFormat(CassandraTestEnvironment cassandraTestEnvironment)
+            throws Exception {
 
         final Class<? extends Pojo> annotatedPojoClass =
                 annotatePojoWithTable(KEYSPACE, TABLE_NAME_PREFIX + tableID);
 
-        final List<? extends Pojo> pojos = writePojosWithOutputFormat(annotatedPojoClass);
+        final List<? extends Pojo> pojos =
+                writePojosWithOutputFormat(annotatedPojoClass, cassandraTestEnvironment);
         ResultSet rs =
                 cassandraTestEnvironment.executeRequestWithTimeout(
                         injectTableName(SELECT_DATA_QUERY));
         assertThat(rs.all()).hasSize(20);
 
-        final List<? extends Pojo> result = readPojosWithInputFormat(annotatedPojoClass);
+        final List<? extends Pojo> result =
+                readPojosWithInputFormat(annotatedPojoClass, cassandraTestEnvironment);
         assertThat(result)
                 .hasSize(20)
                 .usingRecursiveComparison(
@@ -612,8 +520,10 @@ class CassandraConnectorITCase
                 .isEqualTo(pojos);
     }
 
-    @Test
-    void testCassandraBatchTupleFormat() throws Exception {
+    @ParameterizedTest
+    @MethodSource("cassandraTestEnvironments")
+    void testCassandraBatchTupleFormat(CassandraTestEnvironment cassandraTestEnvironment)
+            throws Exception {
         OutputFormat<Tuple3<String, Integer, Integer>> sink =
                 new CassandraTupleOutputFormat<>(
                         injectTableName(INSERT_DATA_QUERY),
@@ -660,8 +570,10 @@ class CassandraConnectorITCase
         assertThat(result).hasSize(20);
     }
 
-    @Test
-    void testCassandraBatchRowFormat() throws Exception {
+    @ParameterizedTest
+    @MethodSource("cassandraTestEnvironments")
+    void testCassandraBatchRowFormat(CassandraTestEnvironment cassandraTestEnvironment)
+            throws Exception {
         OutputFormat<Row> sink =
                 new CassandraRowOutputFormat(
                         injectTableName(INSERT_DATA_QUERY),
@@ -714,8 +626,10 @@ class CassandraConnectorITCase
         assertThat(sinkBuilder).isInstanceOf(CassandraSink.CassandraScalaProductSinkBuilder.class);
     }
 
-    @Test
-    void testCassandraScalaTupleAtLeastSink() throws Exception {
+    @ParameterizedTest
+    @MethodSource("cassandraTestEnvironments")
+    void testCassandraScalaTupleAtLeastSink(CassandraTestEnvironment cassandraTestEnvironment)
+            throws Exception {
         CassandraScalaProductSink<scala.Tuple3<String, Integer, Integer>> sink =
                 new CassandraScalaProductSink<>(
                         injectTableName(INSERT_DATA_QUERY),
@@ -750,8 +664,10 @@ class CassandraConnectorITCase
         assertThat(scalaTupleCollection).isEmpty();
     }
 
-    @Test
-    void testCassandraScalaTuplePartialColumnUpdate() throws Exception {
+    @ParameterizedTest
+    @MethodSource("cassandraTestEnvironments")
+    void testCassandraScalaTuplePartialColumnUpdate(
+            CassandraTestEnvironment cassandraTestEnvironment) throws Exception {
         CassandraSinkBaseConfig config =
                 CassandraSinkBaseConfig.newBuilder().setIgnoreNullFields(true).build();
         CassandraScalaProductSink<scala.Tuple3<String, Integer, Integer>> sink =
@@ -792,5 +708,138 @@ class CassandraConnectorITCase
                                     row.getInt(TUPLE_BATCHID_FIELD)))
                     .isEqualTo(new scala.Tuple3<>(id, counter, batchId));
         }
+    }
+}
+
+class CassandraTestEnvironmentSink
+        extends WriteAheadSinkTestBase<
+                Tuple3<String, Integer, Integer>,
+                CassandraTupleWriteAheadSink<Tuple3<String, Integer, Integer>>> {
+    private final CassandraTestEnvironment cassandraTestEnvironment;
+    private final String tableID;
+
+    public CassandraTestEnvironmentSink(
+            CassandraTestEnvironment cassandraTestEnvironment, String tableID) {
+        this.cassandraTestEnvironment = cassandraTestEnvironment;
+        this.tableID = tableID;
+    }
+
+    private String injectTableName(String target) {
+        return target.replace(
+                CassandraConnectorITCase.TABLE_NAME_VARIABLE,
+                CassandraConnectorITCase.TABLE_NAME_PREFIX + tableID);
+    }
+
+    @Override
+    protected CassandraTupleWriteAheadSink<Tuple3<String, Integer, Integer>> createSink()
+            throws Exception {
+        return new CassandraTupleWriteAheadSink<>(
+                injectTableName(CassandraConnectorITCase.INSERT_DATA_QUERY),
+                TypeExtractor.getForObject(new Tuple3<>("", 0, 0))
+                        .createSerializer(new ExecutionConfig()),
+                cassandraTestEnvironment.getBuilderForReading(),
+                new CassandraCommitter(cassandraTestEnvironment.getBuilderForReading()));
+    }
+
+    @Override
+    protected TupleTypeInfo<Tuple3<String, Integer, Integer>> createTypeInfo() {
+        return TupleTypeInfo.getBasicTupleTypeInfo(String.class, Integer.class, Integer.class);
+    }
+
+    @Override
+    protected Tuple3<String, Integer, Integer> generateValue(int counter, int checkpointID) {
+        return new Tuple3<>(UUID.randomUUID().toString(), counter, checkpointID);
+    }
+
+    @Override
+    protected void verifyResultsIdealCircumstances(
+            CassandraTupleWriteAheadSink<Tuple3<String, Integer, Integer>> sink) {
+
+        ResultSet result =
+                cassandraTestEnvironment.executeRequestWithTimeout(
+                        injectTableName(SELECT_DATA_QUERY));
+        ArrayList<Integer> list = new ArrayList<>();
+        for (int x = 1; x <= 60; x++) {
+            list.add(x);
+        }
+
+        for (com.datastax.driver.core.Row s : result) {
+            list.remove(Integer.valueOf(s.getInt(TUPLE_COUNTER_FIELD)));
+        }
+        assertThat(list)
+                .as("The following ID's were not found in the ResultSet: " + list)
+                .isEmpty();
+    }
+
+    @Override
+    protected void verifyResultsDataPersistenceUponMissedNotify(
+            CassandraTupleWriteAheadSink<Tuple3<String, Integer, Integer>> sink) {
+
+        ResultSet result =
+                cassandraTestEnvironment.executeRequestWithTimeout(
+                        injectTableName(SELECT_DATA_QUERY));
+        ArrayList<Integer> list = new ArrayList<>();
+        for (int x = 1; x <= 60; x++) {
+            list.add(x);
+        }
+
+        for (com.datastax.driver.core.Row s : result) {
+            list.remove(Integer.valueOf(s.getInt(TUPLE_COUNTER_FIELD)));
+        }
+        assertThat(list)
+                .as("The following ID's were not found in the ResultSet: " + list)
+                .isEmpty();
+    }
+
+    @Override
+    protected void verifyResultsDataDiscardingUponRestore(
+            CassandraTupleWriteAheadSink<Tuple3<String, Integer, Integer>> sink) {
+
+        ResultSet result =
+                cassandraTestEnvironment.executeRequestWithTimeout(
+                        injectTableName(SELECT_DATA_QUERY));
+        ArrayList<Integer> list = new ArrayList<>();
+        for (int x = 1; x <= 20; x++) {
+            list.add(x);
+        }
+        for (int x = 41; x <= 60; x++) {
+            list.add(x);
+        }
+
+        for (com.datastax.driver.core.Row s : result) {
+            list.remove(Integer.valueOf(s.getInt(TUPLE_COUNTER_FIELD)));
+        }
+        assertThat(list)
+                .as("The following ID's were not found in the ResultSet: " + list)
+                .isEmpty();
+    }
+
+    @Override
+    protected void verifyResultsWhenReScaling(
+            CassandraTupleWriteAheadSink<Tuple3<String, Integer, Integer>> sink,
+            int startElementCounter,
+            int endElementCounter) {
+
+        // IMPORTANT NOTE:
+        //
+        // for cassandra we always have to start from 1 because
+        // all operators will share the same final db
+
+        ArrayList<Integer> expected = new ArrayList<>();
+        for (int i = 1; i <= endElementCounter; i++) {
+            expected.add(i);
+        }
+
+        ArrayList<Integer> actual = new ArrayList<>();
+        ResultSet result =
+                cassandraTestEnvironment.executeRequestWithTimeout(
+                        injectTableName(SELECT_DATA_QUERY));
+
+        for (com.datastax.driver.core.Row s : result) {
+            actual.add(s.getInt(TUPLE_COUNTER_FIELD));
+        }
+
+        Collections.sort(actual);
+        assertThat(actual.toArray()).isEqualTo(expected.toArray());
     }
 }
