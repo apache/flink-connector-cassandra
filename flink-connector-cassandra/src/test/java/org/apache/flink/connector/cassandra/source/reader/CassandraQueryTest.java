@@ -39,7 +39,8 @@ class CassandraQueryTest {
                         "select field1, field2 from keyspace.table;",
                         "select field1, field2 from keyspace.table LIMIT(1000);",
                         "select field1 from keyspace.table ;",
-                        "select field1 from keyspace.table where field1=1;")
+                        "select field1 from keyspace.table where field1=1;",
+                        "select field1 from keyspace.table where field1_with_minimum_word=1;")
                 .forEach(CassandraQueryTest::assertQueryFormatCorrect);
 
         Arrays.asList(
