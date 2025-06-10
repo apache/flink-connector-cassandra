@@ -42,7 +42,6 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.sink.SinkContextUtil;
-import org.apache.flink.streaming.runtime.operators.WriteAheadSinkTestBase;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.internal.TableEnvironmentInternal;
 import org.apache.flink.testutils.junit.extensions.retry.RetryExtension;
@@ -80,10 +79,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SuppressWarnings("serial")
 @Testcontainers
 @ExtendWith(RetryExtension.class)
-class CassandraConnectorITCase
-        extends WriteAheadSinkTestBase<
-                Tuple3<String, Integer, Integer>,
-                CassandraTupleWriteAheadSink<Tuple3<String, Integer, Integer>>> {
+class CassandraConnectorITCase {
 
     private static final CassandraTestEnvironment cassandraTestEnvironment =
             new CassandraTestEnvironment(false);
@@ -284,7 +280,6 @@ class CassandraConnectorITCase
     //  Exactly-once Tests
     // ------------------------------------------------------------------------
 
-    @Override
     protected CassandraTupleWriteAheadSink<Tuple3<String, Integer, Integer>> createSink()
             throws Exception {
         return new CassandraTupleWriteAheadSink<>(
@@ -295,17 +290,14 @@ class CassandraConnectorITCase
                 new CassandraCommitter(cassandraTestEnvironment.getBuilderForReading()));
     }
 
-    @Override
     protected TupleTypeInfo<Tuple3<String, Integer, Integer>> createTypeInfo() {
         return TupleTypeInfo.getBasicTupleTypeInfo(String.class, Integer.class, Integer.class);
     }
 
-    @Override
     protected Tuple3<String, Integer, Integer> generateValue(int counter, int checkpointID) {
         return new Tuple3<>(UUID.randomUUID().toString(), counter, checkpointID);
     }
 
-    @Override
     protected void verifyResultsIdealCircumstances(
             CassandraTupleWriteAheadSink<Tuple3<String, Integer, Integer>> sink) {
 
@@ -325,7 +317,6 @@ class CassandraConnectorITCase
                 .isEmpty();
     }
 
-    @Override
     protected void verifyResultsDataPersistenceUponMissedNotify(
             CassandraTupleWriteAheadSink<Tuple3<String, Integer, Integer>> sink) {
 
@@ -345,7 +336,6 @@ class CassandraConnectorITCase
                 .isEmpty();
     }
 
-    @Override
     protected void verifyResultsDataDiscardingUponRestore(
             CassandraTupleWriteAheadSink<Tuple3<String, Integer, Integer>> sink) {
 
@@ -368,7 +358,6 @@ class CassandraConnectorITCase
                 .isEmpty();
     }
 
-    @Override
     protected void verifyResultsWhenReScaling(
             CassandraTupleWriteAheadSink<Tuple3<String, Integer, Integer>> sink,
             int startElementCounter,
