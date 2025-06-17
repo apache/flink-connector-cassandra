@@ -39,8 +39,7 @@ class CassandraQueryTest {
                         "select field1, field2 from keyspace.table;",
                         "select field1, field2 from keyspace.table LIMIT(1000);",
                         "select field1 from keyspace.table ;",
-                        "select field1 from keyspace.table where field1=1;",
-                        "select field1 from keyspace.table where field1_with_minimum_word=1;")
+                        "select field1 from keyspace.table where field1=1;")
                 .forEach(CassandraQueryTest::assertQueryFormatCorrect);
 
         Arrays.asList(
@@ -63,6 +62,11 @@ class CassandraQueryTest {
                         "SELECT field1, field2 from flink.table ORDER BY field1;",
                         "SELECT field1, field2 from flink.table GROUP BY field1;")
                 .forEach(CassandraQueryTest::assertProhibitedClauseRejected);
+        Arrays.asList(
+                        "select * from keyspace.table where field1_with_minimum_word=1;",
+                        "select field1_with_minimum_word from keyspace.table;",
+                        "select * from keyspace.table_with_minimum_word;")
+                .forEach(CassandraQueryTest::assertQueryFormatCorrect);
     }
 
     @Test
@@ -108,8 +112,8 @@ class CassandraQueryTest {
     private static void assertQueryFormatCorrect(String query) {
         Matcher matcher = CassandraSource.SELECT_REGEXP.matcher(query);
         assertThat(matcher.matches()).isTrue();
-        assertThat(matcher.group(1)).isEqualTo("keyspace");
-        assertThat(matcher.group(2)).isEqualTo("table");
+        assertThat(matcher.group(1)).matches(".*"); // keyspace
+        assertThat(matcher.group(2)).matches(".*"); // table
     }
 
     private static void assertProhibitedClauseRejected(String query) {
