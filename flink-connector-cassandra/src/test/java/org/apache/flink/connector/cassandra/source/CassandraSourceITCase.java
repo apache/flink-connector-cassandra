@@ -19,6 +19,7 @@
 package org.apache.flink.connector.cassandra.source;
 
 import org.apache.flink.connector.cassandra.CassandraTestEnvironment;
+import org.apache.flink.connector.cassandra.CassandraTestEnvironmentProvider;
 import org.apache.flink.connector.cassandra.source.enumerator.CassandraEnumeratorState;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 import org.apache.flink.connector.cassandra.source.split.SplitsGenerator;
@@ -26,9 +27,7 @@ import org.apache.flink.connector.testframe.environment.ClusterControllable;
 import org.apache.flink.connector.testframe.environment.MiniClusterTestEnvironment;
 import org.apache.flink.connector.testframe.environment.TestEnvironment;
 import org.apache.flink.connector.testframe.external.source.DataStreamSourceExternalContext;
-import org.apache.flink.connector.testframe.junit.annotations.TestContext;
 import org.apache.flink.connector.testframe.junit.annotations.TestEnv;
-import org.apache.flink.connector.testframe.junit.annotations.TestExternalSystem;
 import org.apache.flink.connector.testframe.junit.annotations.TestSemantics;
 import org.apache.flink.connector.testframe.testsuites.SourceTestSuiteBase;
 import org.apache.flink.connector.testframe.utils.CollectIteratorAssertions;
@@ -39,11 +38,11 @@ import org.apache.flink.util.CloseableIterator;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.TestTemplate;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.List;
 
 import static java.util.concurrent.CompletableFuture.runAsync;
-import static org.apache.flink.connector.cassandra.source.CassandraTestContext.CassandraTestContextFactory;
 import static org.apache.flink.connector.cassandra.source.split.SplitsGenerator.CassandraPartitioner.MURMUR3PARTITIONER;
 import static org.apache.flink.connector.cassandra.source.split.SplitsGenerator.CassandraPartitioner.RANDOMPARTITIONER;
 import static org.apache.flink.connector.testframe.utils.ConnectorTestConstants.DEFAULT_COLLECT_DATA_TIMEOUT;
@@ -51,26 +50,21 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Test for the Cassandra source. */
+@ExtendWith(CassandraTestEnvironmentProvider.class)
 class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
 
     @TestEnv MiniClusterTestEnvironment flinkTestEnvironment = new MiniClusterTestEnvironment();
 
-    @TestExternalSystem
-    CassandraTestEnvironment cassandraTestEnvironment = new CassandraTestEnvironment(true);
-
     @TestSemantics
     CheckpointingMode[] semantics = new CheckpointingMode[] {CheckpointingMode.EXACTLY_ONCE};
-
-    @TestContext
-    CassandraTestContextFactory contextFactory =
-            new CassandraTestContextFactory(cassandraTestEnvironment);
 
     @TestTemplate
     @DisplayName("Test basic splitting with MURMUR3PARTITIONER (default Cassandra partitioner)")
     public void testGenerateSplitsMurMur3Partitioner(
             TestEnvironment testEnv,
             DataStreamSourceExternalContext<Pojo> externalContext,
-            CheckpointingMode semantic) {
+            CheckpointingMode semantic,
+            CassandraTestEnvironment cassandraTestEnvironment) {
         final int parallelism = 2;
         SplitsGenerator generator =
                 new SplitsGenerator(
@@ -99,7 +93,8 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
     public void testGenerateSplitsRandomPartitioner(
             TestEnvironment testEnv,
             DataStreamSourceExternalContext<Pojo> externalContext,
-            CheckpointingMode semantic) {
+            CheckpointingMode semantic,
+            CassandraTestEnvironment cassandraTestEnvironment) {
         final int parallelism = 2;
         final SplitsGenerator generator =
                 new SplitsGenerator(
@@ -130,7 +125,8 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
     public void testGenerateSplitsWithCorrectSize(
             TestEnvironment testEnv,
             DataStreamSourceExternalContext<Pojo> externalContext,
-            CheckpointingMode semantic)
+            CheckpointingMode semantic,
+            CassandraTestEnvironment cassandraTestEnvironment)
             throws Exception {
         final int parallelism = 2;
         final long maxSplitMemorySize = 10000L;
@@ -156,7 +152,8 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
     public void testGenerateSplitsWithTooHighMaximumSplitSize(
             TestEnvironment testEnv,
             DataStreamSourceExternalContext<Pojo> externalContext,
-            CheckpointingMode semantic)
+            CheckpointingMode semantic,
+            CassandraTestEnvironment cassandraTestEnvironment)
             throws Exception {
         final int parallelism = 20;
         final SplitsGenerator generator =
