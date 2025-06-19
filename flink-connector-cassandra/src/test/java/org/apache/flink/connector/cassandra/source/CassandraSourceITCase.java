@@ -176,7 +176,6 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
     }
 
     // overridden to use unordered checks
-    @Override
     protected void checkResultWithSemantic(
             CloseableIterator<Pojo> resultIterator,
             List<List<Pojo>> testData,
@@ -197,7 +196,6 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
     }
 
     @Disabled("Not a unbounded source")
-    @Override
     public void testSourceMetrics(
             TestEnvironment testEnv,
             DataStreamSourceExternalContext<Pojo> externalContext,
@@ -205,28 +203,24 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
             throws Exception {}
 
     @Disabled("Not a unbounded source")
-    @Override
     public void testSavepoint(
             TestEnvironment testEnv,
             DataStreamSourceExternalContext<Pojo> externalContext,
             CheckpointingMode semantic) {}
 
     @Disabled("Not a unbounded source")
-    @Override
     public void testScaleUp(
             TestEnvironment testEnv,
             DataStreamSourceExternalContext<Pojo> externalContext,
             CheckpointingMode semantic) {}
 
     @Disabled("Not a unbounded source")
-    @Override
     public void testScaleDown(
             TestEnvironment testEnv,
             DataStreamSourceExternalContext<Pojo> externalContext,
             CheckpointingMode semantic) {}
 
     @Disabled("Not a unbounded source")
-    @Override
     public void testTaskManagerFailure(
             TestEnvironment testEnv,
             DataStreamSourceExternalContext<Pojo> externalContext,
