@@ -20,7 +20,6 @@ package org.apache.flink.connector.cassandra.source;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.source.Boundedness;
@@ -38,6 +37,7 @@ import org.apache.flink.connector.cassandra.source.enumerator.CassandraSplitEnum
 import org.apache.flink.connector.cassandra.source.reader.CassandraSourceReaderFactory;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplitSerializer;
+import org.apache.flink.connector.cassandra.source.utils.QueryValidator;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
 import org.apache.flink.streaming.connectors.cassandra.MapperOptions;
@@ -89,9 +89,6 @@ import static org.apache.flink.util.Preconditions.checkState;
 public class CassandraSource<OUT>
         implements Source<OUT, CassandraSplit, CassandraEnumeratorState>, ResultTypeQueryable<OUT> {
 
-    public static final Pattern CQL_PROHIBITED_CLAUSES_REGEXP =
-            Pattern.compile(
-                    "(?i).*(AVG\\(|COUNT\\(|MIN\\(|MAX\\(|SUM\\(|ORDER BY\\s|GROUP BY\\s).*");
     public static final Pattern SELECT_REGEXP =
             Pattern.compile("(?i)select .+ from (\\w+)\\.(\\w+).*;$");
 
@@ -131,7 +128,8 @@ public class CassandraSource<OUT>
                 maxSplitMemorySize,
                 MIN_SPLIT_MEMORY_SIZE);
         this.maxSplitMemorySize = maxSplitMemorySize;
-        final Matcher queryMatcher = checkQueryValidity(query);
+        final QueryValidator queryValidator = new QueryValidator(clusterBuilder);
+        final Matcher queryMatcher = queryValidator.checkQueryValidity(query);
         this.query = query;
         this.keyspace = queryMatcher.group(1);
         this.table = queryMatcher.group(2);
@@ -139,18 +137,6 @@ public class CassandraSource<OUT>
         ClosureCleaner.clean(clusterBuilder, ExecutionConfig.ClosureCleanerLevel.RECURSIVE, true);
         this.pojoClass = pojoClass;
         this.mapperOptions = mapperOptions;
-    }
-
-    @VisibleForTesting
-    public static Matcher checkQueryValidity(String query) {
-        checkState(
-                !query.matches(CQL_PROHIBITED_CLAUSES_REGEXP.pattern()),
-                "Aggregations/OrderBy are not supported because the query is executed on subsets/partitions of the input table");
-        final Matcher queryMatcher = SELECT_REGEXP.matcher(query);
-        checkState(
-                queryMatcher.matches(),
-                "Query must be of the form select ... from keyspace.table ...;");
-        return queryMatcher;
     }
 
     @Override
