@@ -25,9 +25,9 @@ import org.apache.flink.connector.base.source.reader.splitreader.SplitReader;
 import org.apache.flink.connector.base.source.reader.splitreader.SplitsChange;
 import org.apache.flink.connector.cassandra.source.CassandraSource;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
+import org.apache.flink.connector.cassandra.source.utils.CassandraUtils;
 
 import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.ColumnMetadata;
 import com.datastax.driver.core.Metadata;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
@@ -44,14 +44,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
-import java.util.stream.Collectors;
 
 /**
  * {@link SplitReader} for Cassandra source. This class is responsible for fetching the records as
  * {@link CassandraRow}s. For that, it executes a range query (query that outputs records belonging
  * to Cassandra token range) based on the user specified query.
  */
-class CassandraSplitReader implements SplitReader<CassandraRow, CassandraSplit> {
+public class CassandraSplitReader implements SplitReader<CassandraRow, CassandraSplit> {
 
     private static final Logger LOG = LoggerFactory.getLogger(CassandraSplitReader.class);
 
@@ -79,7 +78,8 @@ class CassandraSplitReader implements SplitReader<CassandraRow, CassandraSplit> 
         Set<String> finishedSplits = new HashSet<>();
 
         Metadata clusterMetadata = cluster.getMetadata();
-        String partitionKey = getPartitionKey(clusterMetadata);
+        String partitionKey =
+                CassandraUtils.getPartitionKeyString(keyspace, table, clusterMetadata);
         String finalQuery = generateRangeQuery(query, partitionKey);
         PreparedStatement preparedStatement = session.prepare(finalQuery);
 
@@ -117,12 +117,6 @@ class CassandraSplitReader implements SplitReader<CassandraRow, CassandraSplit> 
         return new RecordsBySplits<>(recordsBySplit, finishedSplits);
     }
 
-    private String getPartitionKey(Metadata clusterMetadata) {
-        return clusterMetadata.getKeyspace(keyspace).getTable(table).getPartitionKey().stream()
-                .map(ColumnMetadata::getName)
-                .collect(Collectors.joining(","));
-    }
-
     @Override
     public void wakeUp() {
         wakeup.compareAndSet(false, true);
@@ -154,7 +148,7 @@ class CassandraSplitReader implements SplitReader<CassandraRow, CassandraSplit> 
      * @return the final split query that will be sent to the Cassandra cluster
      */
     @VisibleForTesting
-    static String generateRangeQuery(String query, String partitionKey) {
+    public static String generateRangeQuery(String query, String partitionKey) {
         Matcher queryMatcher = CassandraSource.SELECT_REGEXP.matcher(query);
         if (!queryMatcher.matches()) {
             throw new IllegalStateException(
