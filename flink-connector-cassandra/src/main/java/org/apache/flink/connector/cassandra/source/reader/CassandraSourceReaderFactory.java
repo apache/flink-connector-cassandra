@@ -19,6 +19,7 @@
 package org.apache.flink.connector.cassandra.source.reader;
 
 import org.apache.flink.api.connector.source.SourceReaderContext;
+import org.apache.flink.connector.cassandra.source.utils.CassandraUtils;
 import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
 import org.apache.flink.streaming.connectors.cassandra.MapperOptions;
 
@@ -49,7 +50,8 @@ public class CassandraSourceReaderFactory<OUT> {
                 mapper.setDefaultGetOptions(optionsArray);
             }
         }
-        return new CassandraSourceReader<>(
-                context, query, keyspace, table, cluster, session, mapper);
+        final String partitionKey =
+                CassandraUtils.getPartitionKeyString(keyspace, table, cluster.getMetadata());
+        return new CassandraSourceReader<>(context, query, partitionKey, cluster, session, mapper);
     }
 }

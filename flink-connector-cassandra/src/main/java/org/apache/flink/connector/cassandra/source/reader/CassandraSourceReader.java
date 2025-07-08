@@ -49,13 +49,12 @@ class CassandraSourceReader<OUT>
     CassandraSourceReader(
             SourceReaderContext context,
             String query,
-            String keyspace,
-            String table,
+            String partitionKey,
             Cluster cluster,
             Session session,
             Mapper<OUT> mapper) {
         super(
-                () -> new CassandraSplitReader(cluster, session, query, keyspace, table),
+                () -> new CassandraSplitReader(cluster, session, query, partitionKey),
                 new CassandraRecordEmitter<>(resultSet -> mapper.map(resultSet).one()),
                 context.getConfiguration(),
                 context);
