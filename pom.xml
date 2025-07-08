@@ -45,6 +45,9 @@ under the License.
 		<flink.version>1.18.0</flink.version>
 		<japicmp.referenceVersion>3.1.0-1.17</japicmp.referenceVersion>
 		<guava.version>19.0</guava.version>
+<!--		overrides because flink-connector-parent uses 1.8 whereas flink-parent defines 11/17-->
+		<maven.compiler.source>11</maven.compiler.source>
+		<maven.compiler.target>17</maven.compiler.target>
 	</properties>
 
 	<modules>
