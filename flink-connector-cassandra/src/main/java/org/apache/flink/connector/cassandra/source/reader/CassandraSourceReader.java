@@ -21,11 +21,11 @@ package org.apache.flink.connector.cassandra.source.reader;
 import org.apache.flink.api.connector.source.SourceReader;
 import org.apache.flink.api.connector.source.SourceReaderContext;
 import org.apache.flink.connector.base.source.reader.SingleThreadMultiplexSourceReaderBase;
+import org.apache.flink.connector.cassandra.source.reader.converter.CassandraRowToTypeConverter;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
-import com.datastax.driver.mapping.Mapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,17 +45,16 @@ class CassandraSourceReader<OUT>
     private final Cluster cluster;
     private final Session session;
 
-    // created by the factory
     CassandraSourceReader(
             SourceReaderContext context,
             String query,
             String partitionKey,
             Cluster cluster,
             Session session,
-            Mapper<OUT> mapper) {
+            CassandraRowToTypeConverter<OUT> rowConverter) {
         super(
                 () -> new CassandraSplitReader(cluster, session, query, partitionKey),
-                new CassandraRecordEmitter<>(resultSet -> mapper.map(resultSet).one()),
+                new CassandraRowEmitter<>(rowConverter),
                 context.getConfiguration(),
                 context);
         this.cluster = cluster;

@@ -1,5 +1,5 @@
 #
-#Thu Jun 08 12:56:56 CEST 2023
+#Mon Jul 15 23:02:00 IST 2025
 Classes\ in\ API\ packages\ should\ have\ at\ least\ one\ API\ visibility\ annotation.=ea12954c-9e1e-4db3-bd78-2f30ec06d270
 ITCASE\ tests\ should\ use\ a\ MiniCluster\ resource\ or\ extension=dc1ba6f4-3d84-498c-a085-e02ba5936201
 Tests\ inheriting\ from\ AbstractTestBase\ should\ have\ name\ ending\ with\ ITCase=b7279bb1-1eb7-40c0-931d-f6db7971d126

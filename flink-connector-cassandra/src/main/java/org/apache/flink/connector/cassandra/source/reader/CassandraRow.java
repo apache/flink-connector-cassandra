@@ -18,6 +18,8 @@
 
 package org.apache.flink.connector.cassandra.source.reader;
 
+import org.apache.flink.annotation.Internal;
+
 import com.datastax.driver.core.ExecutionInfo;
 import com.datastax.driver.core.Row;
 
@@ -26,6 +28,7 @@ import com.datastax.driver.core.Row;
  * the query execution that produced this row. {@link ExecutionInfo} is useful for using the
  * Cassandra mapper during row translation to pojo.
  */
+@Internal
 public class CassandraRow {
 
     private final Row row;
