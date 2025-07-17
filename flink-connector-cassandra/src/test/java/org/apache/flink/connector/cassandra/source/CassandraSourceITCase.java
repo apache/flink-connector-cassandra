@@ -44,8 +44,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestTemplate;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
-import java.util.Set;
 import java.util.regex.Matcher;
 
 import static java.util.concurrent.CompletableFuture.runAsync;
@@ -261,11 +261,12 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
     public void testExtractFilteringColumns() {
         final QueryValidator queryValidator = cassandraTestEnvironment.getQueryValidator();
         final String query1 = "SELECT * FROM keyspace.table WHERE field = value;";
-        assertThat(queryValidator.extractFilteringColumns(query1)).containsAll(Set.of("field"));
+        assertThat(queryValidator.extractFilteringColumns(query1))
+                .containsAll(Collections.singletonList("field"));
         final String query2 =
                 "SELECT * FROM keyspace.table WHERE field1 = value AND field2 = value;";
         assertThat(queryValidator.extractFilteringColumns(query2))
-                .containsAll(Set.of("field1", "field2"));
+                .containsAll(Arrays.asList("field1", "field2"));
         final String query3 = "SELECT * FROM keyspace.table;";
         assertThat(queryValidator.extractFilteringColumns(query3)).isEmpty();
     }
