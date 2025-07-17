@@ -204,4 +204,20 @@ public class CassandraTestEnvironment implements TestResource {
     public Session getSession() {
         return session;
     }
+
+    public String getContactPoint() {
+        return cassandraContainer.getHost();
+    }
+
+    public int getPort() {
+        return cassandraContainer.getMappedPort(CQL_PORT);
+    }
+
+    public String getUsername() {
+        return cassandraContainer.getUsername();
+    }
+
+    public String getPassword() {
+        return cassandraContainer.getPassword();
+    }
 }

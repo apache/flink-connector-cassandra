@@ -41,6 +41,7 @@ import java.util.function.Function;
  *
  * @param <OUT> type of POJO record to output
  */
+@Deprecated
 class CassandraRecordEmitter<OUT> implements RecordEmitter<CassandraRow, OUT, CassandraSplit> {
 
     private final Function<ResultSet, OUT> map;

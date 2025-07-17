@@ -21,6 +21,7 @@ package org.apache.flink.connector.cassandra.source.reader;
 import org.apache.flink.api.connector.source.SourceReader;
 import org.apache.flink.api.connector.source.SourceReaderContext;
 import org.apache.flink.connector.base.source.reader.SingleThreadMultiplexSourceReaderBase;
+import org.apache.flink.connector.cassandra.source.reader.converter.CassandraRowToTypeConverter;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 
 import com.datastax.driver.core.Cluster;
@@ -45,7 +46,24 @@ class CassandraSourceReader<OUT>
     private final Cluster cluster;
     private final Session session;
 
-    // created by the factory
+    CassandraSourceReader(
+            SourceReaderContext context,
+            String query,
+            String keyspace,
+            String table,
+            Cluster cluster,
+            Session session,
+            CassandraRowToTypeConverter<OUT> rowConverter) {
+        super(
+                () -> new CassandraSplitReader(cluster, session, query, keyspace, table),
+                new CassandraRowEmitter<>(rowConverter),
+                context.getConfiguration(),
+                context);
+        this.cluster = cluster;
+        this.session = session;
+    }
+
+    @Deprecated
     CassandraSourceReader(
             SourceReaderContext context,
             String query,

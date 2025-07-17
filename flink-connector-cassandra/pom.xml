@@ -377,20 +377,70 @@ under the License.
 
 	<build>
 		<plugins>
+			<!-- 
+				Maven Shade Plugin Configuration for Cassandra Connector
+				========================================================
+				
+				This plugin creates TWO jar artifacts:
+				1. Regular jar: flink-connector-cassandra_2.12-X.X-SNAPSHOT.jar (small, no dependencies)
+				2. Shaded jar: flink-connector-cassandra_2.12-X.X-SNAPSHOT-shaded.jar (fat jar with dependencies)
+				
+				WHY WE NEED THE SHADED JAR:
+				- Flink SQL Client requires all dependencies to be bundled in a single jar
+				- DataStax Cassandra driver has complex transitive dependencies (Guava, Netty, etc.)
+				- Version conflicts can occur when users have different versions of these dependencies
+				- The shaded jar relocates conflicting dependencies to avoid classpath issues
+				
+				WHEN TO USE EACH JAR:
+				- Use REGULAR jar: For programmatic API usage when you manage dependencies yourself
+				- Use SHADED jar: For Flink SQL Client, standalone deployments, or to avoid dependency conflicts
+				
+				SHADING DETAILS:
+				- Includes: DataStax driver (core + mapping) and Guava
+				- Relocates: Guava packages to org.apache.flink.cassandra.shaded.com.google.*
+				- Excludes: Protobuf and Guice to avoid breaking other Flink components
+				- Filters: Removes signature files and Maven metadata to prevent conflicts
+			-->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-shade-plugin</artifactId>
 				<executions>
 					<execution>
-						<id>shade-flink</id>
+						<id>shade</id>
 						<phase>package</phase>
 						<goals>
 							<goal>shade</goal>
 						</goals>
 						<configuration>
-							<!-- This is necessary because we bundle a subset of our dependencies,
-							and transitive dependencies of that subset should still be pulled into the user jar.-->
+							<!-- Prevents Maven from rewriting the POM, keeping original dependencies intact -->
+							<createDependencyReducedPom>false</createDependencyReducedPom>
+
+							<!-- Create shaded jar as additional artifact (not replacing the default one) -->
+							<shadedArtifactAttached>true</shadedArtifactAttached>
+							<shadedClassifierName>shaded</shadedClassifierName>
+
+							<!-- Pull in transitive dependencies of the shaded artifacts -->
 							<promoteTransitiveDependencies>true</promoteTransitiveDependencies>
+
+							<!-- Filter out files that can cause conflicts or are unnecessary -->
+							<filters>
+								<filter>
+									<artifact>*:*</artifact>
+									<excludes>
+										<!-- Remove signature files that can cause security exceptions -->
+										<exclude>META-INF/*.SF</exclude>
+										<exclude>META-INF/*.DSA</exclude>
+										<exclude>META-INF/*.RSA</exclude>
+										<!-- Remove Maven metadata to reduce jar size -->
+										<exclude>META-INF/maven/**</exclude>
+										<!-- Remove license files to avoid duplication -->
+										<exclude>META-INF/LICENSE*</exclude>
+										<exclude>META-INF/NOTICE*</exclude>
+									</excludes>
+								</filter>
+							</filters>
+
+							<!-- Only include DataStax Cassandra driver and Guava in the shaded jar -->
 							<artifactSet>
 								<includes>
 									<include>com.datastax.cassandra:cassandra-driver-core:shaded</include>
@@ -398,6 +448,7 @@ under the License.
 									<include>com.google.guava:guava</include>
 								</includes>
 							</artifactSet>
+
 							<relocations>
 								<relocation>
 									<pattern>com.google</pattern>
