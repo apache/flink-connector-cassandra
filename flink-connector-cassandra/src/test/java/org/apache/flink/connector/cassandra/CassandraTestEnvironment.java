@@ -18,6 +18,7 @@
 
 package org.apache.flink.connector.cassandra;
 
+import org.apache.flink.connector.cassandra.source.utils.QueryValidator;
 import org.apache.flink.connector.testframe.TestResource;
 import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
 
@@ -64,10 +65,27 @@ public class CassandraTestEnvironment implements TestResource {
                     + " WITH replication= {'class':'SimpleStrategy', 'replication_factor':1};";
 
     public static final String SPLITS_TABLE = "flinksplits";
+    /*
+         CREATE TABLE flink.flinksplits (col1 int, col2 int, col3 int, col4 int, PRIMARY KEY ((col1, col2), col3));
+         - partition key is (col1, col2)
+         - primary key is ((col1, col2), col3) so col3 is a clustering column
+         - col4 is a regular column
+    */
     private static final String CREATE_SPLITS_TABLE_QUERY =
-            "CREATE TABLE " + KEYSPACE + "." + SPLITS_TABLE + " (id int PRIMARY KEY, counter int);";
+            "CREATE TABLE "
+                    + KEYSPACE
+                    + "."
+                    + SPLITS_TABLE
+                    + " (col1 int, col2 int, col3 int, col4 int, PRIMARY KEY ((col1, col2), col3));";
+    private static final String CREATE_INDEX =
+            "CREATE INDEX col4index ON " + KEYSPACE + "." + SPLITS_TABLE + " (col4);";
     private static final String INSERT_INTO_FLINK_SPLITS =
-            "INSERT INTO " + KEYSPACE + "." + SPLITS_TABLE + " (id, counter)" + " VALUES (%d, %d)";
+            "INSERT INTO "
+                    + KEYSPACE
+                    + "."
+                    + SPLITS_TABLE
+                    + " (col1, col2, col3, col4)"
+                    + " VALUES (%d, %d, %d, %d)";
     private static final int NB_SPLITS_RECORDS = 1000;
 
     @Container private final CassandraContainer cassandraContainer;
@@ -77,6 +95,7 @@ public class CassandraTestEnvironment implements TestResource {
     private Session session;
     private ClusterBuilder builderForReading;
     private ClusterBuilder builderForWriting;
+    private QueryValidator queryValidator;
 
     public CassandraTestEnvironment(boolean insertTestDataForSplitSizeTests) {
         this.insertTestDataForSplitSizeTests = insertTestDataForSplitSizeTests;
@@ -122,7 +141,7 @@ public class CassandraTestEnvironment implements TestResource {
                         ConsistencyLevel.ONE,
                         cassandraContainer.getHost(),
                         cassandraContainer.getMappedPort(CQL_PORT));
-
+        queryValidator = new QueryValidator(builderForReading);
         // Lower consistency level ANY is only available for writing.
         builderForWriting =
                 createBuilderWithConsistencyLevel(
@@ -139,8 +158,9 @@ public class CassandraTestEnvironment implements TestResource {
 
     private void insertTestDataForSplitSizeTests() throws Exception {
         executeRequestWithTimeout(CREATE_SPLITS_TABLE_QUERY);
+        executeRequestWithTimeout(CREATE_INDEX);
         for (int i = 0; i < NB_SPLITS_RECORDS; i++) {
-            executeRequestWithTimeout(String.format(INSERT_INTO_FLINK_SPLITS, i, i));
+            executeRequestWithTimeout(String.format(INSERT_INTO_FLINK_SPLITS, i, i, i, i));
         }
         flushMemTables(SPLITS_TABLE);
     }
@@ -199,6 +219,10 @@ public class CassandraTestEnvironment implements TestResource {
 
     public ClusterBuilder getBuilderForWriting() {
         return builderForWriting;
+    }
+
+    public QueryValidator getQueryValidator() {
+        return queryValidator;
     }
 
     public Session getSession() {
