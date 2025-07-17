@@ -38,7 +38,7 @@ import static org.apache.flink.util.Preconditions.checkState;
 
 /** Class to validate the user provided query. */
 public class QueryValidator {
-    public static final Pattern CQL_PROHIBITED_CLAUSES_REGEXP =
+    private static final Pattern CQL_PROHIBITED_CLAUSES_REGEXP =
             Pattern.compile(
                     "(?i).*(AVG\\(|COUNT\\(|MIN\\(|MAX\\(|SUM\\(|ORDER BY\\s|GROUP BY\\s).*");
     private static final Pattern WHERE_COLUMNS_PATTERN =

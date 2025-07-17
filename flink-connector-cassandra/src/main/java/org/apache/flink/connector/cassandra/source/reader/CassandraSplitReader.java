@@ -25,7 +25,6 @@ import org.apache.flink.connector.base.source.reader.splitreader.SplitReader;
 import org.apache.flink.connector.base.source.reader.splitreader.SplitsChange;
 import org.apache.flink.connector.cassandra.source.CassandraSource;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
-import org.apache.flink.connector.cassandra.source.utils.CassandraUtils;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Metadata;
@@ -59,17 +58,15 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
     private final Set<CassandraSplit> unprocessedSplits;
     private final AtomicBoolean wakeup = new AtomicBoolean(false);
     private final String query;
-    private final String keyspace;
-    private final String table;
+    private final String partitionKey;
 
     public CassandraSplitReader(
-            Cluster cluster, Session session, String query, String keyspace, String table) {
+            Cluster cluster, Session session, String query, String partitionKey) {
         this.unprocessedSplits = new HashSet<>();
         this.query = query;
-        this.keyspace = keyspace;
-        this.table = table;
         this.cluster = cluster;
         this.session = session;
+        this.partitionKey = partitionKey;
     }
 
     @Override
@@ -77,9 +74,6 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
         Map<String, Collection<CassandraRow>> recordsBySplit = new HashMap<>();
         Set<String> finishedSplits = new HashSet<>();
 
-        Metadata clusterMetadata = cluster.getMetadata();
-        String partitionKey =
-                CassandraUtils.getPartitionKeyString(keyspace, table, clusterMetadata);
         String finalQuery = generateRangeQuery(query, partitionKey);
         PreparedStatement preparedStatement = session.prepare(finalQuery);
 
@@ -92,6 +86,7 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
                 break;
             }
             try {
+                Metadata clusterMetadata = cluster.getMetadata();
                 Token startToken =
                         clusterMetadata.newToken(cassandraSplit.getRingRangeStart().toString());
                 Token endToken =
