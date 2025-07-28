@@ -39,6 +39,7 @@ import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.MountableFile;
 
 import java.net.InetSocketAddress;
 import java.time.Duration;
@@ -50,7 +51,7 @@ import java.time.Duration;
 @Testcontainers
 public class CassandraTestEnvironment implements TestResource {
     private static final Logger LOG = LoggerFactory.getLogger(CassandraTestEnvironment.class);
-    private static final String DOCKER_CASSANDRA_IMAGE = "cassandra:4.0.8";
+    private static final String DOCKER_CASSANDRA_IMAGE = "cassandra:4.1.9";
     private static final int CQL_PORT = 9042;
 
     private static final int READ_TIMEOUT_MILLIS = 36000;
@@ -85,7 +86,7 @@ public class CassandraTestEnvironment implements TestResource {
                     + " (col1, col2, col3, col4)"
                     + " VALUES (%d, %d, %d, %d)";
     private static final int NB_SPLITS_RECORDS = 1000;
-    private static final long FLSUH_MEMTABLES_DELAY = 30_000L;
+    private static final long FLUSH_MEMTABLES_DELAY = 30_000L;
 
     @Container private final CassandraContainer cassandraContainer1;
     @Container private final CassandraContainer cassandraContainer2;
@@ -101,25 +102,29 @@ public class CassandraTestEnvironment implements TestResource {
         this.insertTestDataForSplitSizeTests = insertTestDataForSplitSizeTests;
 
         Network network = Network.newNetwork();
-        cassandraContainer1 = (CassandraContainer) new CassandraContainer(DOCKER_CASSANDRA_IMAGE)
-                .withNetwork(network)
-                .withEnv("CASSANDRA_CLUSTER_NAME", "testcontainers")
-                .withEnv("CASSANDRA_SEEDS", "cassandra")
-                .withEnv("JVM_OPTS", "")
-                .withNetworkAliases("cassandra")
-                .withCopyFileToContainer(
-                MountableFile.forClasspathResource("cassandra.yaml"),
-                "/etc/cassandra/cassandra.yaml" //for timeouts
-        );
-        cassandraContainer2 = (CassandraContainer) new CassandraContainer(DOCKER_CASSANDRA_IMAGE)
-                .withNetwork(network)
-                .withEnv("CASSANDRA_CLUSTER_NAME", "testcontainers")
-                .withEnv("JVM_OPTS", "")
-                .withEnv("CASSANDRA_SEEDS", "cassandra")
-                .withCopyFileToContainer(
-                        MountableFile.forClasspathResource("cassandra.yaml"),
-                        "/etc/cassandra/cassandra.yaml" //for timeouts
-                );
+        cassandraContainer1 =
+                (CassandraContainer)
+                        new CassandraContainer(DOCKER_CASSANDRA_IMAGE)
+                                .withNetwork(network)
+                                .withEnv("CASSANDRA_CLUSTER_NAME", "testcontainers")
+                                .withEnv("CASSANDRA_SEEDS", "cassandra")
+                                .withEnv("JVM_OPTS", "")
+                                .withNetworkAliases("cassandra")
+                                .withCopyFileToContainer(
+                                        MountableFile.forClasspathResource("cassandra.yaml"),
+                                        "/etc/cassandra/cassandra.yaml" // for timeouts
+                                        );
+        cassandraContainer2 =
+                (CassandraContainer)
+                        new CassandraContainer(DOCKER_CASSANDRA_IMAGE)
+                                .withNetwork(network)
+                                .withEnv("CASSANDRA_CLUSTER_NAME", "testcontainers")
+                                .withEnv("JVM_OPTS", "")
+                                .withEnv("CASSANDRA_SEEDS", "cassandra")
+                                .withCopyFileToContainer(
+                                        MountableFile.forClasspathResource("cassandra.yaml"),
+                                        "/etc/cassandra/cassandra.yaml" // for timeouts
+                                        );
     }
 
     @Override
@@ -224,17 +229,15 @@ public class CassandraTestEnvironment implements TestResource {
      * Force the refresh of system.size_estimates table. It is needed for the tests because we just
      * inserted records. It is done on a single node as the size estimation for split generation is
      * evaluated based on the ring fraction the connect node represents in the cluster. We first
-     * flush the memTables to SSTables because the size estimates are only on SSTables. Then we refresh
-     * the size estimates.
+     * flush the MemTables to SSTables because the size estimates are only on SSTables. Then we
+     * refresh the size estimates.
      */
     void refreshSizeEstimates(String table) throws Exception {
         final ExecResult execResult1 =
-                cassandraContainer1.execInContainer(
-                        "nodetool", "flush", KEYSPACE, table);
-        Thread.sleep(FLSUH_MEMTABLES_DELAY);
+                cassandraContainer1.execInContainer("nodetool", "flush", KEYSPACE, table);
+        Thread.sleep(FLUSH_MEMTABLES_DELAY);
         final ExecResult execResult2 =
-                cassandraContainer1.execInContainer(
-                        "nodetool", "refreshsizeestimates");
+                cassandraContainer1.execInContainer("nodetool", "refreshsizeestimates");
         if (execResult1.getExitCode() != 0 || execResult2.getExitCode() != 0) {
             throw new RuntimeException(
                     "Failed to refresh system.size_estimates on the Cassandra cluster");
