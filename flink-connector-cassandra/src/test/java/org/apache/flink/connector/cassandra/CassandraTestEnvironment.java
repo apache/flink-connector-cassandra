@@ -106,24 +106,20 @@ public class CassandraTestEnvironment implements TestResource {
                 .withEnv("CASSANDRA_CLUSTER_NAME", "testcontainers")
                 .withEnv("CASSANDRA_SEEDS", "cassandra")
                 .withEnv("JVM_OPTS", "")
-                .withNetworkAliases("cassandra");
-
-        addJavaOpts(
-                cassandraContainer1,
-                "-Dcassandra.request_timeout_in_ms=30000",
-                "-Dcassandra.read_request_timeout_in_ms=15000",
-                "-Dcassandra.write_request_timeout_in_ms=6000");
+                .withNetworkAliases("cassandra")
+                .withCopyFileToContainer(
+                MountableFile.forClasspathResource("cassandra.yaml"),
+                "/etc/cassandra/cassandra.yaml" //for timeouts
+        );
         cassandraContainer2 = (CassandraContainer) new CassandraContainer(DOCKER_CASSANDRA_IMAGE)
                 .withNetwork(network)
                 .withEnv("CASSANDRA_CLUSTER_NAME", "testcontainers")
                 .withEnv("JVM_OPTS", "")
-                .withEnv("CASSANDRA_SEEDS", "cassandra");
-        addJavaOpts(
-                cassandraContainer2,
-                "-Dcassandra.request_timeout_in_ms=30000",
-                "-Dcassandra.read_request_timeout_in_ms=15000",
-                "-Dcassandra.write_request_timeout_in_ms=6000");
-
+                .withEnv("CASSANDRA_SEEDS", "cassandra")
+                .withCopyFileToContainer(
+                        MountableFile.forClasspathResource("cassandra.yaml"),
+                        "/etc/cassandra/cassandra.yaml" //for timeouts
+                );
     }
 
     @Override
@@ -134,11 +130,6 @@ public class CassandraTestEnvironment implements TestResource {
     @Override
     public void tearDown() throws Exception {
         stopEnv();
-    }
-
-    private static void addJavaOpts(GenericContainer<?> container, String... opts) {
-        String jvmOpts = container.getEnvMap().getOrDefault("JVM_OPTS", "");
-        container.withEnv("JVM_OPTS", jvmOpts + " " + StringUtils.join(opts, " "));
     }
 
     private void startEnv() throws Exception {
