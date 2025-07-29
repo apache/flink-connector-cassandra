@@ -26,6 +26,7 @@ import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.QueryOptions;
 import com.datastax.driver.core.ResultSet;
+import com.datastax.driver.core.Row;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.SocketOptions;
@@ -43,6 +44,8 @@ import org.testcontainers.utility.MountableFile;
 
 import java.net.InetSocketAddress;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Junit test environment that contains everything needed at the test suite level: testContainer
@@ -86,7 +89,6 @@ public class CassandraTestEnvironment implements TestResource {
                     + " (col1, col2, col3, col4)"
                     + " VALUES (%d, %d, %d, %d)";
     private static final int NB_SPLITS_RECORDS = 1000;
-    private static final long FLUSH_MEMTABLES_DELAY = 30_000L;
 
     @Container private final CassandraContainer cassandraContainer1;
     @Container private final CassandraContainer cassandraContainer2;
@@ -235,12 +237,23 @@ public class CassandraTestEnvironment implements TestResource {
     void refreshSizeEstimates(String table) throws Exception {
         final ExecResult execResult1 =
                 cassandraContainer1.execInContainer("nodetool", "flush", KEYSPACE, table);
-        Thread.sleep(FLUSH_MEMTABLES_DELAY);
         final ExecResult execResult2 =
                 cassandraContainer1.execInContainer("nodetool", "refreshsizeestimates");
         if (execResult1.getExitCode() != 0 || execResult2.getExitCode() != 0) {
             throw new RuntimeException(
                     "Failed to refresh system.size_estimates on the Cassandra cluster");
+        }
+        List<Row> partitions = new ArrayList<>();
+        while (partitions.isEmpty()
+                || partitions.stream().anyMatch(row -> row.getLong("mean_partition_size") == 0L)) {
+            Thread.sleep(1000);
+            partitions =
+                    session.execute(
+                                    "SELECT range_start, range_end, partitions_count, mean_partition_size FROM "
+                                            + "system.size_estimates WHERE keyspace_name = ? AND table_name = ?",
+                                    KEYSPACE,
+                                    table)
+                            .all();
         }
     }
 

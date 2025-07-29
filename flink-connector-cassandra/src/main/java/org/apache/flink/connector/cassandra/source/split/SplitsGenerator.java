@@ -49,6 +49,7 @@ public final class SplitsGenerator {
     private final String table;
     private final int parallelism;
     private final long maxSplitMemorySize;
+    private long estimatedTableSize;
 
     public SplitsGenerator(
             CassandraPartitioner partitioner,
@@ -91,8 +92,8 @@ public final class SplitsGenerator {
      */
     private long decideOnNumSplits() {
         long numSplits;
-        final long estimateTableSize = estimateTableSize();
-        if (estimateTableSize == 0) { // size estimates unavailable
+        estimatedTableSize = estimateTableSize();
+        if (estimatedTableSize == 0) { // size estimates unavailable
             LOG.info(
                     "Cassandra size estimates are not available for {}.{} table. Creating as many splits as parallelism ({})",
                     keyspace,
@@ -105,11 +106,11 @@ public final class SplitsGenerator {
                     "Estimated size for {}.{} table is {} bytes",
                     keyspace,
                     table,
-                    estimateTableSize);
+                    estimatedTableSize);
             numSplits =
-                    estimateTableSize / maxSplitMemorySize == 0
+                    estimatedTableSize / maxSplitMemorySize == 0
                             ? parallelism
-                            : estimateTableSize / maxSplitMemorySize;
+                            : estimatedTableSize / maxSplitMemorySize;
             LOG.info(
                     "maxSplitMemorySize set value ({}) leads to the creation of {} splits",
                     maxSplitMemorySize,
@@ -123,8 +124,7 @@ public final class SplitsGenerator {
      * just inserted and the amount of data in the table was small. This is very common situation
      * during tests.
      */
-    @VisibleForTesting
-    public long estimateTableSize() {
+    private long estimateTableSize() {
         List<TokenRange> tokenRanges = getTokenRangesOfTable();
         long size = 0L;
         for (TokenRange tokenRange : tokenRanges) {
@@ -227,6 +227,11 @@ public final class SplitsGenerator {
         public String getClassName() {
             return className;
         }
+    }
+
+    @VisibleForTesting
+    public long getEstimatedTableSize() {
+        return estimatedTableSize;
     }
 
     private static class TokenRange {
