@@ -37,9 +37,10 @@ import org.testcontainers.containers.Container.ExecResult;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.output.OutputFrame;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
-import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.containers.wait.CassandraQueryWaitStrategy;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.lifecycle.Startables;
 import org.testcontainers.utility.MountableFile;
 
 import java.net.InetSocketAddress;
@@ -143,19 +144,16 @@ public class CassandraTestEnvironment implements TestResource {
         // configure container start to wait until cassandra is ready to receive queries
         // start with retrials
         cassandraContainer1.waitingFor(
-                Wait.forLogMessage(".*Startup complete.*", 1)
-                        .withStartupTimeout(Duration.ofMinutes(2)));
-        cassandraContainer1.start();
+                new CassandraQueryWaitStrategy().withStartupTimeout(Duration.ofMinutes(2)));
+        cassandraContainer2.waitingFor(
+                new CassandraQueryWaitStrategy().withStartupTimeout(Duration.ofMinutes(2)));
+        Startables.deepStart(cassandraContainer1, cassandraContainer2).join();
         cassandraContainer1.followOutput(
                 new Slf4jLogConsumer(LOG),
                 OutputFrame.OutputType.END,
                 OutputFrame.OutputType.STDERR,
                 OutputFrame.OutputType.STDOUT);
 
-        cassandraContainer2.waitingFor(
-                Wait.forLogMessage(".*Startup complete.*", 1)
-                        .withStartupTimeout(Duration.ofMinutes(2)));
-        cassandraContainer2.start();
         cassandraContainer2.followOutput(
                 new Slf4jLogConsumer(LOG),
                 OutputFrame.OutputType.END,
@@ -201,8 +199,18 @@ public class CassandraTestEnvironment implements TestResource {
         if (cluster != null) {
             cluster.close();
         }
-        cassandraContainer1.stop();
-        cassandraContainer2.stop();
+        try {
+            cassandraContainer1.stop();
+        } catch (Exception e) {
+            // do not fail the test for a stop failure and allow the other container to stop
+            LOG.error("Cassandra test container 1 failed to stop.", e);
+        }
+        try {
+            cassandraContainer2.stop();
+        } catch (Exception e) {
+            // do not fail the test for a stop failure
+            LOG.error("Cassandra test container 2 failed to stop.", e);
+        }
     }
 
     private ClusterBuilder createBuilderWithConsistencyLevel(
