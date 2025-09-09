@@ -86,7 +86,7 @@ public class BatchPojoExample {
                                 Pojo.class,
                                 () ->
                                         new Mapper.Option[] {
-                                            Mapper.Option.consistencyLevel(ConsistencyLevel.ANY)
+                                            Mapper.Option.consistencyLevel(ConsistencyLevel.ONE)
                                         }));
 
         inputDS.print();
