@@ -40,7 +40,6 @@ import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.containers.wait.CassandraQueryWaitStrategy;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.lifecycle.Startables;
 import org.testcontainers.utility.MountableFile;
 
 import java.net.InetSocketAddress;
@@ -65,7 +64,7 @@ public class CassandraTestEnvironment implements TestResource {
     private static final String CREATE_KEYSPACE_QUERY =
             "CREATE KEYSPACE "
                     + KEYSPACE
-                    + " WITH replication= {'class':'SimpleStrategy', 'replication_factor':1};";
+                    + " WITH replication= {'class':'SimpleStrategy', 'replication_factor':2};";
 
     public static final String SPLITS_TABLE = "flinksplits";
     /*
@@ -90,6 +89,7 @@ public class CassandraTestEnvironment implements TestResource {
                     + " (col1, col2, col3, col4)"
                     + " VALUES (%d, %d, %d, %d)";
     private static final int NB_SPLITS_RECORDS = 1000;
+    private static final int STARTUP_TIMEOUT_MINUTES = 3;
 
     @Container private final CassandraContainer cassandraContainer1;
     @Container private final CassandraContainer cassandraContainer2;
@@ -144,16 +144,19 @@ public class CassandraTestEnvironment implements TestResource {
         // configure container start to wait until cassandra is ready to receive queries
         // start with retrials
         cassandraContainer1.waitingFor(
-                new CassandraQueryWaitStrategy().withStartupTimeout(Duration.ofMinutes(2)));
+                new CassandraQueryWaitStrategy()
+                        .withStartupTimeout(Duration.ofMinutes(STARTUP_TIMEOUT_MINUTES)));
         cassandraContainer2.waitingFor(
-                new CassandraQueryWaitStrategy().withStartupTimeout(Duration.ofMinutes(2)));
-        Startables.deepStart(cassandraContainer1, cassandraContainer2).join();
+                new CassandraQueryWaitStrategy()
+                        .withStartupTimeout(Duration.ofMinutes(STARTUP_TIMEOUT_MINUTES)));
+        cassandraContainer1.start();
         cassandraContainer1.followOutput(
                 new Slf4jLogConsumer(LOG),
                 OutputFrame.OutputType.END,
                 OutputFrame.OutputType.STDERR,
                 OutputFrame.OutputType.STDOUT);
 
+        cassandraContainer2.start();
         cassandraContainer2.followOutput(
                 new Slf4jLogConsumer(LOG),
                 OutputFrame.OutputType.END,
@@ -168,10 +171,9 @@ public class CassandraTestEnvironment implements TestResource {
                         cassandraContainer1.getHost(),
                         cassandraContainer1.getMappedPort(CQL_PORT));
         queryValidator = new QueryValidator(builderForReading);
-        // Lower consistency level ANY is only available for writing.
         builderForWriting =
                 createBuilderWithConsistencyLevel(
-                        ConsistencyLevel.ANY,
+                        ConsistencyLevel.ONE,
                         cassandraContainer1.getHost(),
                         cassandraContainer1.getMappedPort(CQL_PORT));
         session = cluster.connect();
