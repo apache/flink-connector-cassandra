@@ -289,18 +289,18 @@ public class CassandraTestEnvironment implements TestResource {
     }
 
     public String getContactPoint() {
-        return cassandraContainer.getHost();
+        return cassandraContainer1.getHost();
     }
 
     public int getPort() {
-        return cassandraContainer.getMappedPort(CQL_PORT);
+        return cassandraContainer1.getMappedPort(CQL_PORT);
     }
 
     public String getUsername() {
-        return cassandraContainer.getUsername();
+        return cassandraContainer1.getUsername();
     }
 
     public String getPassword() {
-        return cassandraContainer.getPassword();
+        return cassandraContainer1.getPassword();
     }
 }
