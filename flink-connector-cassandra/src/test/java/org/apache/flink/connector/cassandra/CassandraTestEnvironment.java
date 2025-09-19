@@ -26,21 +26,26 @@ import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.QueryOptions;
 import com.datastax.driver.core.ResultSet;
+import com.datastax.driver.core.Row;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.SocketOptions;
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.CassandraContainer;
-import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.Container.ExecResult;
+import org.testcontainers.containers.Network;
 import org.testcontainers.containers.output.OutputFrame;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.containers.wait.CassandraQueryWaitStrategy;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.MountableFile;
 
 import java.net.InetSocketAddress;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Junit test environment that contains everything needed at the test suite level: testContainer
@@ -49,20 +54,17 @@ import java.net.InetSocketAddress;
 @Testcontainers
 public class CassandraTestEnvironment implements TestResource {
     private static final Logger LOG = LoggerFactory.getLogger(CassandraTestEnvironment.class);
-    private static final String DOCKER_CASSANDRA_IMAGE = "cassandra:4.0.8";
+    private static final String DOCKER_CASSANDRA_IMAGE = "cassandra:4.1.9";
     private static final int CQL_PORT = 9042;
 
     private static final int READ_TIMEOUT_MILLIS = 36000;
-
-    // flushing mem table to SS tables is an asynchronous operation that may take a while
-    private static final long FLUSH_MEMTABLES_DELAY = 30_000L;
 
     public static final String KEYSPACE = "flink";
 
     private static final String CREATE_KEYSPACE_QUERY =
             "CREATE KEYSPACE "
                     + KEYSPACE
-                    + " WITH replication= {'class':'SimpleStrategy', 'replication_factor':1};";
+                    + " WITH replication= {'class':'SimpleStrategy', 'replication_factor':2};";
 
     public static final String SPLITS_TABLE = "flinksplits";
     /*
@@ -87,8 +89,10 @@ public class CassandraTestEnvironment implements TestResource {
                     + " (col1, col2, col3, col4)"
                     + " VALUES (%d, %d, %d, %d)";
     private static final int NB_SPLITS_RECORDS = 1000;
+    private static final int STARTUP_TIMEOUT_MINUTES = 3;
 
-    @Container private final CassandraContainer cassandraContainer;
+    @Container private final CassandraContainer cassandraContainer1;
+    @Container private final CassandraContainer cassandraContainer2;
 
     boolean insertTestDataForSplitSizeTests;
     private Cluster cluster;
@@ -99,13 +103,31 @@ public class CassandraTestEnvironment implements TestResource {
 
     public CassandraTestEnvironment(boolean insertTestDataForSplitSizeTests) {
         this.insertTestDataForSplitSizeTests = insertTestDataForSplitSizeTests;
-        cassandraContainer = new CassandraContainer(DOCKER_CASSANDRA_IMAGE);
-        // more generous timeouts
-        addJavaOpts(
-                cassandraContainer,
-                "-Dcassandra.request_timeout_in_ms=30000",
-                "-Dcassandra.read_request_timeout_in_ms=15000",
-                "-Dcassandra.write_request_timeout_in_ms=6000");
+
+        Network network = Network.newNetwork();
+        cassandraContainer1 =
+                (CassandraContainer)
+                        new CassandraContainer(DOCKER_CASSANDRA_IMAGE)
+                                .withNetwork(network)
+                                .withEnv("CASSANDRA_CLUSTER_NAME", "testcontainers")
+                                .withEnv("CASSANDRA_SEEDS", "cassandra")
+                                .withEnv("JVM_OPTS", "")
+                                .withNetworkAliases("cassandra")
+                                .withCopyFileToContainer(
+                                        MountableFile.forClasspathResource("cassandra.yaml"),
+                                        "/etc/cassandra/cassandra.yaml" // for timeouts
+                                        );
+        cassandraContainer2 =
+                (CassandraContainer)
+                        new CassandraContainer(DOCKER_CASSANDRA_IMAGE)
+                                .withNetwork(network)
+                                .withEnv("CASSANDRA_CLUSTER_NAME", "testcontainers")
+                                .withEnv("JVM_OPTS", "")
+                                .withEnv("CASSANDRA_SEEDS", "cassandra")
+                                .withCopyFileToContainer(
+                                        MountableFile.forClasspathResource("cassandra.yaml"),
+                                        "/etc/cassandra/cassandra.yaml" // for timeouts
+                                        );
     }
 
     @Override
@@ -118,39 +140,45 @@ public class CassandraTestEnvironment implements TestResource {
         stopEnv();
     }
 
-    private static void addJavaOpts(GenericContainer<?> container, String... opts) {
-        String jvmOpts = container.getEnvMap().getOrDefault("JVM_OPTS", "");
-        container.withEnv("JVM_OPTS", jvmOpts + " " + StringUtils.join(opts, " "));
-    }
-
     private void startEnv() throws Exception {
         // configure container start to wait until cassandra is ready to receive queries
-        cassandraContainer.waitingFor(new CassandraQueryWaitStrategy());
         // start with retrials
-        cassandraContainer.start();
-        cassandraContainer.followOutput(
+        cassandraContainer1.waitingFor(
+                new CassandraQueryWaitStrategy()
+                        .withStartupTimeout(Duration.ofMinutes(STARTUP_TIMEOUT_MINUTES)));
+        cassandraContainer2.waitingFor(
+                new CassandraQueryWaitStrategy()
+                        .withStartupTimeout(Duration.ofMinutes(STARTUP_TIMEOUT_MINUTES)));
+        cassandraContainer1.start();
+        cassandraContainer1.followOutput(
                 new Slf4jLogConsumer(LOG),
                 OutputFrame.OutputType.END,
                 OutputFrame.OutputType.STDERR,
                 OutputFrame.OutputType.STDOUT);
 
-        cluster = cassandraContainer.getCluster();
+        cassandraContainer2.start();
+        cassandraContainer2.followOutput(
+                new Slf4jLogConsumer(LOG),
+                OutputFrame.OutputType.END,
+                OutputFrame.OutputType.STDERR,
+                OutputFrame.OutputType.STDOUT);
+
+        cluster = cassandraContainer1.getCluster();
         // ConsistencyLevel.ONE is the minimum level for reading
         builderForReading =
                 createBuilderWithConsistencyLevel(
                         ConsistencyLevel.ONE,
-                        cassandraContainer.getHost(),
-                        cassandraContainer.getMappedPort(CQL_PORT));
+                        cassandraContainer1.getHost(),
+                        cassandraContainer1.getMappedPort(CQL_PORT));
         queryValidator = new QueryValidator(builderForReading);
-        // Lower consistency level ANY is only available for writing.
         builderForWriting =
                 createBuilderWithConsistencyLevel(
-                        ConsistencyLevel.ANY,
-                        cassandraContainer.getHost(),
-                        cassandraContainer.getMappedPort(CQL_PORT));
+                        ConsistencyLevel.ONE,
+                        cassandraContainer1.getHost(),
+                        cassandraContainer1.getMappedPort(CQL_PORT));
         session = cluster.connect();
         executeRequestWithTimeout(CREATE_KEYSPACE_QUERY);
-        // create a dedicated table for split size tests (to avoid having to flush with each test)
+        // create a dedicated table for split size tests
         if (insertTestDataForSplitSizeTests) {
             insertTestDataForSplitSizeTests();
         }
@@ -162,7 +190,7 @@ public class CassandraTestEnvironment implements TestResource {
         for (int i = 0; i < NB_SPLITS_RECORDS; i++) {
             executeRequestWithTimeout(String.format(INSERT_INTO_FLINK_SPLITS, i, i, i, i));
         }
-        flushMemTables(SPLITS_TABLE);
+        refreshSizeEstimates(SPLITS_TABLE);
     }
 
     private void stopEnv() {
@@ -173,7 +201,18 @@ public class CassandraTestEnvironment implements TestResource {
         if (cluster != null) {
             cluster.close();
         }
-        cassandraContainer.stop();
+        try {
+            cassandraContainer1.stop();
+        } catch (Exception e) {
+            // do not fail the test for a stop failure and allow the other container to stop
+            LOG.error("Cassandra test container 1 failed to stop.", e);
+        }
+        try {
+            cassandraContainer2.stop();
+        } catch (Exception e) {
+            // do not fail the test for a stop failure
+            LOG.error("Cassandra test container 2 failed to stop.", e);
+        }
     }
 
     private ClusterBuilder createBuilderWithConsistencyLevel(
@@ -199,13 +238,33 @@ public class CassandraTestEnvironment implements TestResource {
     }
 
     /**
-     * Force the flush of cassandra memTables to SSTables in order to update size_estimates. It is
-     * needed for the tests because we just inserted records, we need to force cassandra to update
-     * size_estimates system table.
+     * Force the refresh of system.size_estimates table. It is needed for the tests because we just
+     * inserted records. It is done on a single node as the size estimation for split generation is
+     * evaluated based on the ring fraction the connect node represents in the cluster. We first
+     * flush the MemTables to SSTables because the size estimates are only on SSTables. Then we
+     * refresh the size estimates.
      */
-    void flushMemTables(String table) throws Exception {
-        cassandraContainer.execInContainer("nodetool", "flush", KEYSPACE, table);
-        Thread.sleep(FLUSH_MEMTABLES_DELAY);
+    void refreshSizeEstimates(String table) throws Exception {
+        final ExecResult execResult1 =
+                cassandraContainer1.execInContainer("nodetool", "flush", KEYSPACE, table);
+        final ExecResult execResult2 =
+                cassandraContainer1.execInContainer("nodetool", "refreshsizeestimates");
+        if (execResult1.getExitCode() != 0 || execResult2.getExitCode() != 0) {
+            throw new RuntimeException(
+                    "Failed to refresh system.size_estimates on the Cassandra cluster");
+        }
+        List<Row> partitions = new ArrayList<>();
+        while (partitions.isEmpty()
+                || partitions.stream().anyMatch(row -> row.getLong("mean_partition_size") == 0L)) {
+            Thread.sleep(1000);
+            partitions =
+                    session.execute(
+                                    "SELECT range_start, range_end, partitions_count, mean_partition_size FROM "
+                                            + "system.size_estimates WHERE keyspace_name = ? AND table_name = ?",
+                                    KEYSPACE,
+                                    table)
+                            .all();
+        }
     }
 
     public ResultSet executeRequestWithTimeout(String query) {
@@ -230,18 +289,18 @@ public class CassandraTestEnvironment implements TestResource {
     }
 
     public String getContactPoint() {
-        return cassandraContainer.getHost();
+        return cassandraContainer1.getHost();
     }
 
     public int getPort() {
-        return cassandraContainer.getMappedPort(CQL_PORT);
+        return cassandraContainer1.getMappedPort(CQL_PORT);
     }
 
     public String getUsername() {
-        return cassandraContainer.getUsername();
+        return cassandraContainer1.getUsername();
     }
 
     public String getPassword() {
-        return cassandraContainer.getPassword();
+        return cassandraContainer1.getPassword();
     }
 }

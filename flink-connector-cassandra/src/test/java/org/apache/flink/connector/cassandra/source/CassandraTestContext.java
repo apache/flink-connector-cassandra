@@ -28,6 +28,7 @@ import org.apache.flink.connector.testframe.external.source.TestingSourceSetting
 import org.apache.flink.connectors.cassandra.utils.Pojo;
 import org.apache.flink.streaming.connectors.cassandra.MapperOptions;
 
+import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.mapping.Mapper;
 import com.datastax.driver.mapping.MappingManager;
 
@@ -65,7 +66,12 @@ public class CassandraTestContext implements DataStreamSourceExternalContext<Poj
         this.cassandraTestEnvironment = cassandraTestEnvironment;
         createTable();
         mapper = new MappingManager(cassandraTestEnvironment.getSession()).mapper(Pojo.class);
-        mapperOptions = () -> new Mapper.Option[] {Mapper.Option.saveNullFields(true)};
+        mapperOptions =
+                () ->
+                        new Mapper.Option[] {
+                            Mapper.Option.saveNullFields(true),
+                            Mapper.Option.consistencyLevel(ConsistencyLevel.ONE)
+                        };
     }
 
     @Override

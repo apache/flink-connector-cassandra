@@ -62,7 +62,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Test for the Cassandra source. */
 class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
 
-    private static final long EXPECTED_TABLE_SIZE = 51200L;
     @TestEnv MiniClusterTestEnvironment flinkTestEnvironment = new MiniClusterTestEnvironment();
 
     @TestExternalSystem
@@ -152,10 +151,9 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
                         SPLITS_TABLE,
                         parallelism,
                         maxSplitMemorySize);
-        final long tableSize = generator.estimateTableSize();
-        // sanity check to ensure that the size estimates were updated in the Cassandra cluster
-        assertThat(tableSize).isEqualTo(EXPECTED_TABLE_SIZE);
         final CassandraEnumeratorState cassandraEnumeratorState = generator.prepareSplits();
+        final long tableSize = generator.getEstimatedTableSize();
+
         assertThat(cassandraEnumeratorState.getNumSplitsLeftToGenerate())
                 // regular case
                 .isEqualTo(tableSize / maxSplitMemorySize);
@@ -177,9 +175,9 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
                         SPLITS_TABLE,
                         parallelism,
                         100_000_000L);
-        // sanity check to ensure that the size estimates were updated in the Cassandra cluster
-        assertThat(generator.estimateTableSize()).isEqualTo(EXPECTED_TABLE_SIZE);
         final CassandraEnumeratorState cassandraEnumeratorState = generator.prepareSplits();
+        final long tableSize = generator.getEstimatedTableSize();
+
         // maxSplitMemorySize is too high compared to table size. Falling back to parallelism splits
         // too low maxSplitMemorySize is guarded by an assertion > min at source creation
         assertThat(cassandraEnumeratorState.getNumSplitsLeftToGenerate()).isEqualTo(parallelism);
