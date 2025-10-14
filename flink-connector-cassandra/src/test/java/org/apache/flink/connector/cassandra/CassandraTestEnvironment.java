@@ -140,6 +140,10 @@ public class CassandraTestEnvironment implements TestResource {
         stopEnv();
     }
 
+    public String getHost() {
+        return cassandraContainer1.getHost();
+    }
+
     private void startEnv() throws Exception {
         // configure container start to wait until cassandra is ready to receive queries
         // start with retrials
