@@ -42,7 +42,7 @@ under the License.
 		<slf4j.version>1.7.36</slf4j.version>
 		<log4j.version>2.17.1</log4j.version>
 		<junit5.version>5.8.1</junit5.version>
-		<assertj.version>3.23.1</assertj.version>
+		<assertj.version>3.27.7</assertj.version>
 		<archunit.version>1.0.0</archunit.version>
 		<!-- For dependency convergence we exclude testContainers commons-compress transitive dependency and keep only flink's.
 		Don't downgrade testcontainers otherwise the wrong commons-compress transitive dependency will lead to NoClassDefFound-->
