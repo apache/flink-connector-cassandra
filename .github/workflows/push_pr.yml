@@ -17,7 +17,28 @@
 ################################################################################
 
 name: Build flink-connector-cassandra
-on: [push, pull_request]
+on:
+  push:
+    paths-ignore:
+      - 'docs/**'
+      - '.idea/**'
+      - '**.md'
+      - '.asf.yaml'
+      - '.editorconfig'
+      - '.git-blame-ignore-revs'
+      - '.gitignore'
+      - '.gitattributes'
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '.idea/**'
+      - '**.md'
+      - '.asf.yaml'
+      - '.editorconfig'
+      - '.git-blame-ignore-revs'
+      - '.gitignore'
+      - '.gitattributes'
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
