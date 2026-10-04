@@ -23,13 +23,15 @@ Please follow the Flink contribution guide:
 https://flink.apache.org/how-to-contribute/contribute-code/
 
 Use a title in the form "[FLINK-XXXX][Connectors/Cassandra] Description"
-and link the corresponding Jira issue below. Documentation typo fixes do not
-require a Jira issue.
+and link the corresponding Jira issue below.
+
+Trivial hotfixes, such as typos or syntax errors, need no Jira issue.
+Use a title in the form "[hotfix] Description".
 -->
 
 ## Purpose of the change
 
-<!-- Link the Jira issue and explain the problem this change addresses. -->
+<!-- Link the Jira issue (if any) and explain the problem this change addresses. -->
 
 ## Brief change log
 
