@@ -25,7 +25,7 @@ jobs:
   compile_and_test:
     strategy:
       matrix:
-        flink: [ 1.19.0 ]
+        flink: [ 1.19.3 ]
         include:
           - flink: 1.18.1
 
