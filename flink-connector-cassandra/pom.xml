@@ -214,6 +214,15 @@ under the License.
 			</exclusions>
 		</dependency>
 
+		<!-- Flink's commons-compress 1.26.0 declares commons-codec as optional,
+		but Testcontainers needs it to copy files into the containers -->
+		<dependency>
+			<groupId>commons-codec</groupId>
+			<artifactId>commons-codec</artifactId>
+			<version>1.16.1</version>
+			<scope>test</scope>
+		</dependency>
+
 		<dependency>
 			<groupId>net.bytebuddy</groupId>
 			<artifactId>byte-buddy</artifactId>
