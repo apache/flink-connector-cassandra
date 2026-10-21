@@ -46,7 +46,7 @@ under the License.
 		<archunit.version>1.0.0</archunit.version>
 		<!-- For dependency convergence we exclude testContainers commons-compress transitive dependency and keep only flink's.
 		Don't downgrade testcontainers otherwise the wrong commons-compress transitive dependency will lead to NoClassDefFound-->
-		<testcontainers.version>1.20.2</testcontainers.version>
+		<testcontainers.version>1.21.4</testcontainers.version>
 		<mockito.version>3.4.6</mockito.version>
 		<byte-buddy.version>1.12.10</byte-buddy.version>
 		<findbugs.version>1.3.9</findbugs.version>
