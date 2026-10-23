@@ -35,7 +35,7 @@ import org.apache.flink.connector.testframe.junit.annotations.TestSemantics;
 import org.apache.flink.connector.testframe.testsuites.SourceTestSuiteBase;
 import org.apache.flink.connector.testframe.utils.CollectIteratorAssertions;
 import org.apache.flink.connectors.cassandra.utils.Pojo;
-import org.apache.flink.streaming.api.CheckpointingMode;
+import org.apache.flink.core.execution.CheckpointingMode;
 import org.apache.flink.util.CloseableIterator;
 
 import org.junit.jupiter.api.Disabled;
