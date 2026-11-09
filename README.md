@@ -25,6 +25,22 @@ mvn clean package -DskipTests
 
 The resulting jars can be found in the `target` directory of the respective module.
 
+## ScyllaDB Support
+
+**ScyllaDB is fully supported** as a drop-in replacement for Apache Cassandra. The connector has been validated with comprehensive integration tests running against ScyllaDB 2025.1.4 (latest open source version).
+
+All connector features work seamlessly with ScyllaDB:
+- Source operations (reading data)
+- Sink operations (writing data)
+- Batch input/output formats
+- Exactly-once semantics
+- At-least-once semantics
+- Split generation and parallel processing
+
+To use the connector with ScyllaDB, simply point your connection configuration to ScyllaDB nodes instead of Cassandra nodes. No code changes required.
+
+See the [ScyllaDB Connector Documentation](docs/content/docs/connectors/datastream/scylladb.md) for detailed usage instructions and examples.
+
 ## Developing Flink
 
 The Flink committers use IntelliJ IDEA to develop the Flink codebase.
