@@ -42,7 +42,7 @@ Note that the streaming connectors are currently __NOT__ part of the binary dist
 ## Installing Apache Cassandra
 There are multiple ways to bring up a Cassandra instance on local machine:
 
-1. Follow the instructions from [Cassandra Getting Started page](http://cassandra.apache.org/doc/latest/getting_started/index.html).
+1. Follow the instructions from [Cassandra Getting Started page](https://cassandra.apache.org/doc/latest/cassandra/getting-started/index.html).
 2. Launch a container running Cassandra from [Official Docker Repository](https://hub.docker.com/_/cassandra/)
 
 ## Cassandra Source
