@@ -24,16 +24,17 @@ import org.apache.flink.table.data.StringData;
 import org.apache.flink.table.data.TimestampData;
 import org.apache.flink.table.types.logical.DecimalType;
 
-import com.datastax.driver.core.Duration;
-import com.datastax.driver.core.LocalDate;
-import com.datastax.driver.core.Row;
+import com.datastax.oss.driver.api.core.cql.Row;
+import com.datastax.oss.driver.api.core.type.DataType;
+import com.datastax.oss.driver.api.core.type.DataTypes;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.time.Instant;
-import java.util.Date;
+import java.time.LocalDate;
+import java.time.LocalTime;
 
 /** Collection of primitive type field mappers for Cassandra to Flink conversion. */
 @Internal
@@ -45,7 +46,7 @@ public final class PrimitiveFieldMappers {
     public static final class BooleanMapper implements CassandraFieldMapper {
         @Override
         public Object extractRowFieldValue(Row row, String fieldName) {
-            return row.isNull(fieldName) ? null : row.getBool(fieldName);
+            return row.isNull(fieldName) ? null : row.getBoolean(fieldName);
         }
     }
 
@@ -126,20 +127,17 @@ public final class PrimitiveFieldMappers {
             if (row.isNull(fieldName)) {
                 return null;
             }
-            String columnType = row.getColumnDefinitions().getType(fieldName).getName().toString();
+            DataType columnType = row.getType(fieldName);
 
-            switch (columnType) {
-                case "inet":
-                    InetAddress inet = row.getInet(fieldName);
-                    return StringData.fromString(inet.getHostAddress());
-                case "duration":
-                    Duration duration = row.get(fieldName, Duration.class);
-                    return StringData.fromString(duration.toString());
-                case "uuid":
-                case "timeuuid":
-                    return StringData.fromString(row.getUUID(fieldName).toString());
-                default:
-                    return convertValueToFlinkType(row.getString(fieldName));
+            if (DataTypes.INET.equals(columnType)) {
+                InetAddress inet = row.getInetAddress(fieldName);
+                return StringData.fromString(inet.getHostAddress());
+            } else if (DataTypes.DURATION.equals(columnType)) {
+                return StringData.fromString(row.getCqlDuration(fieldName).toString());
+            } else if (DataTypes.UUID.equals(columnType) || DataTypes.TIMEUUID.equals(columnType)) {
+                return StringData.fromString(row.getUuid(fieldName).toString());
+            } else {
+                return convertValueToFlinkType(row.getString(fieldName));
             }
         }
 
@@ -175,7 +173,7 @@ public final class PrimitiveFieldMappers {
             if (row.isNull(fieldName)) {
                 return null;
             }
-            return convertValueToFlinkType(row.getDecimal(fieldName));
+            return convertValueToFlinkType(row.getBigDecimal(fieldName));
         }
 
         @Override
@@ -196,7 +194,7 @@ public final class PrimitiveFieldMappers {
             if (row.isNull(fieldName)) {
                 return null;
             }
-            return convertValueToFlinkType(row.getDate(fieldName));
+            return convertValueToFlinkType(row.getLocalDate(fieldName));
         }
 
         @Override
@@ -204,10 +202,7 @@ public final class PrimitiveFieldMappers {
             if (value == null) {
                 return null;
             }
-            LocalDate date = (LocalDate) value;
-            return (int)
-                    java.time.LocalDate.of(date.getYear(), date.getMonth(), date.getDay())
-                            .toEpochDay();
+            return (int) ((LocalDate) value).toEpochDay();
         }
     }
 
@@ -218,7 +213,7 @@ public final class PrimitiveFieldMappers {
             if (row.isNull(fieldName)) {
                 return null;
             }
-            return convertValueToFlinkType(row.getTime(fieldName));
+            return convertValueToFlinkType(row.getLocalTime(fieldName));
         }
 
         @Override
@@ -226,10 +221,10 @@ public final class PrimitiveFieldMappers {
             if (value == null) {
                 return null;
             }
-            // Cassandra time is nanoseconds since midnight (long)
+            // Cassandra time has a nanosecond precision
             // Flink TIME is milliseconds since midnight (int)
-            if (value instanceof Long) {
-                long nanoseconds = (Long) value;
+            if (value instanceof LocalTime) {
+                long nanoseconds = ((LocalTime) value).toNanoOfDay();
                 return (int) (nanoseconds / 1_000_000); // Convert nanoseconds to milliseconds
             }
             return value;
@@ -243,7 +238,7 @@ public final class PrimitiveFieldMappers {
             if (row.isNull(fieldName)) {
                 return null;
             }
-            return convertValueToFlinkType(row.getTimestamp(fieldName));
+            return convertValueToFlinkType(row.getInstant(fieldName));
         }
 
         @Override
@@ -251,9 +246,7 @@ public final class PrimitiveFieldMappers {
             if (value == null) {
                 return null;
             }
-            if (value instanceof Date) {
-                return TimestampData.fromInstant(((Date) value).toInstant());
-            } else if (value instanceof Instant) {
+            if (value instanceof Instant) {
                 return TimestampData.fromInstant((Instant) value);
             }
             return value;
@@ -267,7 +260,7 @@ public final class PrimitiveFieldMappers {
             if (row.isNull(fieldName)) {
                 return null;
             }
-            return convertValueToFlinkType(row.getBytes(fieldName));
+            return convertValueToFlinkType(row.getByteBuffer(fieldName));
         }
 
         @Override
@@ -298,7 +291,7 @@ public final class PrimitiveFieldMappers {
             if (row.isNull(fieldName)) {
                 return null;
             }
-            return convertValueToFlinkType(row.getVarint(fieldName));
+            return convertValueToFlinkType(row.getBigInteger(fieldName));
         }
 
         @Override
@@ -351,15 +344,10 @@ public final class PrimitiveFieldMappers {
             }
 
             // Determine the actual Cassandra column type at runtime
-            String cassandraType =
-                    row.getColumnDefinitions().getType(fieldName).getName().toString();
-
-            switch (cassandraType.toLowerCase()) {
-                case "varint":
-                    return varintMapper.extractRowFieldValue(row, fieldName);
-                case "decimal":
-                default:
-                    return decimalMapper.extractRowFieldValue(row, fieldName);
+            if (DataTypes.VARINT.equals(row.getType(fieldName))) {
+                return varintMapper.extractRowFieldValue(row, fieldName);
+            } else {
+                return decimalMapper.extractRowFieldValue(row, fieldName);
             }
         }
 

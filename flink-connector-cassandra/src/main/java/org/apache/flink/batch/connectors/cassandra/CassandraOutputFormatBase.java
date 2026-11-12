@@ -19,29 +19,23 @@ package org.apache.flink.batch.connectors.cassandra;
 
 import org.apache.flink.api.common.io.OutputFormatBase;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 import org.apache.flink.util.Preconditions;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.Session;
-import com.google.common.util.concurrent.FutureCallback;
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
+import com.datastax.oss.driver.api.core.CqlSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
-
 import java.time.Duration;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * CassandraOutputFormatBase is the common abstract class for writing into Apache Cassandra using
  * output formats.
  *
  * <p>In case of experiencing the following error: {@code Error while sending value.
- * com.datastax.driver.core.exceptions.WriteTimeoutException: Cassandra timeout during write query
- * at consistency LOCAL_ONE (1 replica were required but only 0 acknowledged the write)},
+ * com.datastax.oss.driver.api.core.servererrors.WriteTimeoutException: Cassandra timeout during
+ * SIMPLE write query at consistency LOCAL_ONE (1 replica were required but only 0 acknowledged the
+ * write)},
  *
  * <p>it is recommended to increase the Cassandra write timeout to adapt to your workload in your
  * Cassandra cluster so that such timeout errors do not happen. For that you need to raise
@@ -57,12 +51,11 @@ import java.util.concurrent.CompletableFuture;
 abstract class CassandraOutputFormatBase<OUT, V> extends OutputFormatBase<OUT, V> {
     private static final Logger LOG = LoggerFactory.getLogger(CassandraOutputFormatBase.class);
 
-    private final ClusterBuilder builder;
-    private transient Cluster cluster;
-    protected transient Session session;
+    private final CassandraSessionBuilder builder;
+    protected transient CqlSession session;
 
     public CassandraOutputFormatBase(
-            ClusterBuilder builder,
+            CassandraSessionBuilder builder,
             int maxConcurrentRequests,
             Duration maxConcurrentRequestsTimeout) {
         super(maxConcurrentRequests, maxConcurrentRequestsTimeout);
@@ -70,16 +63,14 @@ abstract class CassandraOutputFormatBase<OUT, V> extends OutputFormatBase<OUT, V
         this.builder = builder;
     }
 
-    /** Configure the connection to Cassandra. */
+    /** The connection to Cassandra is created when the format is opened. */
     @Override
-    public void configure(Configuration parameters) {
-        this.cluster = builder.getCluster();
-    }
+    public void configure(Configuration parameters) {}
 
     /** Opens a Session to Cassandra . */
     @Override
     protected void postOpen() {
-        this.session = cluster.connect();
+        this.session = builder.getSession();
     }
 
     /** Closes all resources used by Cassandra connection. */
@@ -91,39 +82,6 @@ abstract class CassandraOutputFormatBase<OUT, V> extends OutputFormatBase<OUT, V
             }
         } catch (Exception e) {
             LOG.error("Error while closing session.", e);
-        }
-        try {
-            if (cluster != null) {
-                cluster.close();
-            }
-        } catch (Exception e) {
-            LOG.error("Error while closing cluster.", e);
-        }
-    }
-
-    protected static <T> CompletableFuture<T> listenableFutureToCompletableFuture(
-            final ListenableFuture<T> listenableFuture) {
-        CompletableFuture<T> completable = new CompletableFuture<T>();
-        Futures.addCallback(listenableFuture, new CompletableFutureCallback<>(completable));
-        return completable;
-    }
-
-    private static class CompletableFutureCallback<T> implements FutureCallback<T> {
-
-        private final CompletableFuture<T> completableFuture;
-
-        public CompletableFutureCallback(CompletableFuture<T> completableFuture) {
-            this.completableFuture = completableFuture;
-        }
-
-        @Override
-        public void onSuccess(@Nullable T result) {
-            completableFuture.complete(result);
-        }
-
-        @Override
-        public void onFailure(Throwable throwable) {
-            completableFuture.completeExceptionally(throwable);
         }
     }
 }

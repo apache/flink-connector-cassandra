@@ -23,11 +23,9 @@ import org.apache.flink.table.data.StringData;
 import org.apache.flink.table.data.TimestampData;
 import org.apache.flink.table.types.logical.DecimalType;
 
-import com.datastax.driver.core.ColumnDefinitions;
-import com.datastax.driver.core.DataType;
-import com.datastax.driver.core.Duration;
-import com.datastax.driver.core.LocalDate;
-import com.datastax.driver.core.Row;
+import com.datastax.oss.driver.api.core.cql.Row;
+import com.datastax.oss.driver.api.core.data.CqlDuration;
+import com.datastax.oss.driver.api.core.type.DataTypes;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,10 +37,10 @@ import java.math.BigInteger;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.time.Instant;
-import java.util.Date;
+import java.time.LocalDate;
+import java.time.LocalTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /** Unit tests for {@link PrimitiveFieldMappers}. */
@@ -65,11 +63,11 @@ class PrimitiveFieldMappersTest {
 
         // Test true value
         when(mockRow.isNull("field")).thenReturn(false);
-        when(mockRow.getBool("field")).thenReturn(true);
+        when(mockRow.getBoolean("field")).thenReturn(true);
         assertThat(mapper.extractRowFieldValue(mockRow, "field")).isEqualTo(true);
 
         // Test false value
-        when(mockRow.getBool("field")).thenReturn(false);
+        when(mockRow.getBoolean("field")).thenReturn(false);
         assertThat(mapper.extractRowFieldValue(mockRow, "field")).isEqualTo(false);
     }
 
@@ -183,36 +181,30 @@ class PrimitiveFieldMappersTest {
 
         // Test string value (text type)
         when(mockRow.isNull("field")).thenReturn(false);
-        ColumnDefinitions columnDefs = mock(ColumnDefinitions.class);
-        DataType dataType = mock(DataType.class);
-        DataType.Name typeName = mock(DataType.Name.class);
-        when(mockRow.getColumnDefinitions()).thenReturn(columnDefs);
-        when(columnDefs.getType("field")).thenReturn(dataType);
-        when(dataType.getName()).thenReturn(typeName);
-        when(typeName.toString()).thenReturn("text");
+        when(mockRow.getType("field")).thenReturn(DataTypes.TEXT);
         when(mockRow.getString("field")).thenReturn("hello");
         Object result = mapper.extractRowFieldValue(mockRow, "field");
         assertThat(result).isInstanceOf(StringData.class);
         assertThat(result.toString()).isEqualTo("hello");
 
         // Test inet value
-        when(typeName.toString()).thenReturn("inet");
+        when(mockRow.getType("field")).thenReturn(DataTypes.INET);
         InetAddress testAddress = InetAddress.getByName("192.168.1.1");
-        when(mockRow.getInet("field")).thenReturn(testAddress);
+        when(mockRow.getInetAddress("field")).thenReturn(testAddress);
         Object inetResult = mapper.extractRowFieldValue(mockRow, "field");
         assertThat(inetResult).isInstanceOf(StringData.class);
         assertThat(inetResult.toString()).isEqualTo("192.168.1.1");
 
         // Test duration value
-        when(typeName.toString()).thenReturn("duration");
-        Duration testDuration = Duration.newInstance(1, 2, 3000000000L);
-        when(mockRow.get("field", Duration.class)).thenReturn(testDuration);
+        when(mockRow.getType("field")).thenReturn(DataTypes.DURATION);
+        CqlDuration testDuration = CqlDuration.newInstance(1, 2, 3000000000L);
+        when(mockRow.getCqlDuration("field")).thenReturn(testDuration);
         Object durationResult = mapper.extractRowFieldValue(mockRow, "field");
         assertThat(durationResult).isInstanceOf(StringData.class);
         assertThat(durationResult.toString()).isEqualTo(testDuration.toString());
 
         // Test unknown type fallback to getString()
-        when(typeName.toString()).thenReturn("unknown_type");
+        when(mockRow.getType("field")).thenReturn(DataTypes.BLOB);
         when(mockRow.getString("field")).thenReturn("fallback_value");
         Object unknownResult = mapper.extractRowFieldValue(mockRow, "field");
         assertThat(unknownResult).isInstanceOf(StringData.class);
@@ -234,22 +226,16 @@ class PrimitiveFieldMappersTest {
 
         // Test unknown/unsupported Cassandra type fallback
         when(mockRow.isNull("field")).thenReturn(false);
-        ColumnDefinitions columnDefs = mock(ColumnDefinitions.class);
-        DataType dataType = mock(DataType.class);
-        DataType.Name typeName = mock(DataType.Name.class);
-        when(mockRow.getColumnDefinitions()).thenReturn(columnDefs);
-        when(columnDefs.getType("field")).thenReturn(dataType);
-        when(dataType.getName()).thenReturn(typeName);
 
         // Test with completely unknown type (should fall back to getString)
-        when(typeName.toString()).thenReturn("custom_type");
+        when(mockRow.getType("field")).thenReturn(DataTypes.ASCII);
         when(mockRow.getString("field")).thenReturn("custom_value");
         Object result = mapper.extractRowFieldValue(mockRow, "field");
         assertThat(result).isInstanceOf(StringData.class);
         assertThat(result.toString()).isEqualTo("custom_value");
 
         // Test with another unknown type
-        when(typeName.toString()).thenReturn("user_defined_type");
+        when(mockRow.getType("field")).thenReturn(DataTypes.COUNTER);
         when(mockRow.getString("field")).thenReturn("udt_string_representation");
         Object udtResult = mapper.extractRowFieldValue(mockRow, "field");
         assertThat(udtResult).isInstanceOf(StringData.class);
@@ -269,7 +255,7 @@ class PrimitiveFieldMappersTest {
         // Test decimal value
         when(mockRow.isNull("field")).thenReturn(false);
         BigDecimal testDecimal = new BigDecimal("123.45");
-        when(mockRow.getDecimal("field")).thenReturn(testDecimal);
+        when(mockRow.getBigDecimal("field")).thenReturn(testDecimal);
         Object result = mapper.extractRowFieldValue(mockRow, "field");
         Assertions.assertNotNull(result);
         assertThat(result).isInstanceOf(DecimalData.class);
@@ -292,16 +278,16 @@ class PrimitiveFieldMappersTest {
 
         // Test date value
         when(mockRow.isNull("field")).thenReturn(false);
-        LocalDate testDate = LocalDate.fromYearMonthDay(2023, 6, 15);
-        when(mockRow.getDate("field")).thenReturn(testDate);
+        LocalDate testDate = LocalDate.of(2023, 6, 15);
+        when(mockRow.getLocalDate("field")).thenReturn(testDate);
         Object result = mapper.extractRowFieldValue(mockRow, "field");
         assertThat(result).isInstanceOf(Integer.class);
-        assertThat(result).isEqualTo((int) java.time.LocalDate.of(2023, 6, 15).toEpochDay());
+        assertThat(result).isEqualTo((int) LocalDate.of(2023, 6, 15).toEpochDay());
 
         // Test convertValue method
         assertThat(mapper.convertValueToFlinkType(null)).isNull();
         Integer converted = (Integer) mapper.convertValueToFlinkType(testDate);
-        assertThat(converted).isEqualTo((int) java.time.LocalDate.of(2023, 6, 15).toEpochDay());
+        assertThat(converted).isEqualTo((int) LocalDate.of(2023, 6, 15).toEpochDay());
     }
 
     @Test
@@ -312,13 +298,10 @@ class PrimitiveFieldMappersTest {
         when(mockRow.isNull("field")).thenReturn(true);
         assertThat(mapper.extractRowFieldValue(mockRow, "field")).isNull();
 
-        // Test time value - Cassandra time is nanoseconds since midnight
+        // Test time value - Cassandra time has a nanosecond precision
         when(mockRow.isNull("field")).thenReturn(false);
-        long testTimeNanos =
-                14L * 3600 * 1_000_000_000
-                        + 30L * 60 * 1_000_000_000
-                        + 45L * 1_000_000_000; // 14:30:45
-        when(mockRow.getTime("field")).thenReturn(testTimeNanos);
+        LocalTime testTime = LocalTime.of(14, 30, 45);
+        when(mockRow.getLocalTime("field")).thenReturn(testTime);
         Object result = mapper.extractRowFieldValue(mockRow, "field");
         assertThat(result).isInstanceOf(Integer.class);
 
@@ -328,9 +311,9 @@ class PrimitiveFieldMappersTest {
 
         // Test convertValue method
         assertThat(mapper.convertValueToFlinkType(null)).isNull();
-        assertThat(mapper.convertValueToFlinkType(1_000_000_000L))
+        assertThat(mapper.convertValueToFlinkType(LocalTime.ofNanoOfDay(1_000_000_000L)))
                 .isEqualTo(1000); // 1 second in nanos -> 1000 millis
-        assertThat(mapper.convertValueToFlinkType(500_000_000L))
+        assertThat(mapper.convertValueToFlinkType(LocalTime.ofNanoOfDay(500_000_000L)))
                 .isEqualTo(500); // 0.5 second in nanos -> 500 millis
     }
 
@@ -344,18 +327,14 @@ class PrimitiveFieldMappersTest {
 
         // Test timestamp value
         when(mockRow.isNull("field")).thenReturn(false);
-        Date testDate = new Date(1234567890000L);
-        when(mockRow.getTimestamp("field")).thenReturn(testDate);
+        Instant instant = Instant.ofEpochMilli(1234567890000L);
+        when(mockRow.getInstant("field")).thenReturn(instant);
         Object result = mapper.extractRowFieldValue(mockRow, "field");
         assertThat(result).isInstanceOf(TimestampData.class);
-
-        // Test convertValue method with Date
-        assertThat(mapper.convertValueToFlinkType(null)).isNull();
-        TimestampData converted = (TimestampData) mapper.convertValueToFlinkType(testDate);
-        assertThat(converted.toInstant()).isEqualTo(testDate.toInstant());
+        assertThat(((TimestampData) result).toInstant()).isEqualTo(instant);
 
         // Test convertValue method with Instant
-        Instant instant = Instant.ofEpochMilli(1234567890000L);
+        assertThat(mapper.convertValueToFlinkType(null)).isNull();
         TimestampData convertedInstant = (TimestampData) mapper.convertValueToFlinkType(instant);
         assertThat(convertedInstant.toInstant()).isEqualTo(instant);
     }
@@ -371,7 +350,7 @@ class PrimitiveFieldMappersTest {
         // Test binary value
         when(mockRow.isNull("field")).thenReturn(false);
         ByteBuffer testBuffer = ByteBuffer.wrap(new byte[] {1, 2, 3, 4});
-        when(mockRow.getBytes("field")).thenReturn(testBuffer);
+        when(mockRow.getByteBuffer("field")).thenReturn(testBuffer);
         Object result = mapper.extractRowFieldValue(mockRow, "field");
         assertThat(result).isInstanceOf(byte[].class);
 
@@ -399,15 +378,9 @@ class PrimitiveFieldMappersTest {
 
         // Test VARINT type (BigInteger)
         when(mockRow.isNull("field")).thenReturn(false);
-        ColumnDefinitions columnDefs = mock(ColumnDefinitions.class);
-        DataType dataType = mock(DataType.class);
-        DataType.Name typeName = mock(DataType.Name.class);
-        when(mockRow.getColumnDefinitions()).thenReturn(columnDefs);
-        when(columnDefs.getType("field")).thenReturn(dataType);
-        when(dataType.getName()).thenReturn(typeName);
-        when(typeName.toString()).thenReturn("varint");
+        when(mockRow.getType("field")).thenReturn(DataTypes.VARINT);
         BigInteger varintValue = new BigInteger("12345");
-        when(mockRow.getVarint("field")).thenReturn(varintValue);
+        when(mockRow.getBigInteger("field")).thenReturn(varintValue);
 
         Object varintResult = mapper.extractRowFieldValue(mockRow, "field");
         assertThat(varintResult).isInstanceOf(DecimalData.class);
@@ -416,9 +389,9 @@ class PrimitiveFieldMappersTest {
         assertThat(varintDecimal.toBigDecimal()).isEqualTo(new BigDecimal("12345.00"));
 
         // Test DECIMAL type (BigDecimal)
-        when(typeName.toString()).thenReturn("decimal");
+        when(mockRow.getType("field")).thenReturn(DataTypes.DECIMAL);
         BigDecimal decimalValue = new BigDecimal("123.45");
-        when(mockRow.getDecimal("field")).thenReturn(decimalValue);
+        when(mockRow.getBigDecimal("field")).thenReturn(decimalValue);
 
         Object decimalResult = mapper.extractRowFieldValue(mockRow, "field");
         assertThat(decimalResult).isInstanceOf(DecimalData.class);
@@ -426,8 +399,8 @@ class PrimitiveFieldMappersTest {
         assertThat(decimalData.toBigDecimal()).isEqualTo(decimalValue);
 
         // Test unknown type defaults to decimal
-        when(typeName.toString()).thenReturn("unknown_type");
-        when(mockRow.getDecimal("field")).thenReturn(decimalValue);
+        when(mockRow.getType("field")).thenReturn(DataTypes.BLOB);
+        when(mockRow.getBigDecimal("field")).thenReturn(decimalValue);
         Object defaultResult = mapper.extractRowFieldValue(mockRow, "field");
         assertThat(defaultResult).isInstanceOf(DecimalData.class);
 
@@ -458,7 +431,7 @@ class PrimitiveFieldMappersTest {
         // Test varint value
         when(mockRow.isNull("field")).thenReturn(false);
         BigInteger testVarint = new BigInteger("123456789012345678901234567890");
-        when(mockRow.getVarint("field")).thenReturn(testVarint);
+        when(mockRow.getBigInteger("field")).thenReturn(testVarint);
         Object result = mapper.extractRowFieldValue(mockRow, "field");
         assertThat(result).isInstanceOf(DecimalData.class);
 

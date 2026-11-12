@@ -50,8 +50,7 @@ under the License.
 		<byte-buddy.version>1.12.10</byte-buddy.version>
 		<findbugs.version>1.3.9</findbugs.version>
 
-		<!--driver 3.x works with 3.x and 4.x versions of Cassandra but driver 4.x is a complete refactoring with different API-->
-		<driver.version>3.11.2</driver.version>
+		<driver.version>4.19.4</driver.version>
 	</properties>
 
 	<dependencies>
@@ -102,69 +101,46 @@ under the License.
 
 		<!-- Cassandra dependencies -->
 
-		<!--Using datastax provided shaded driver which includes relocated netty-->
-		<!--https://docs.datastax.com/en/developer/java-driver/3.1/manual/shaded_jar/-->
+		<!--Using the driver provided shaded jar which includes relocated netty and jackson-->
+		<!--https://apache.github.io/cassandra-java-driver/4.19.0/core/shaded_jar/-->
 		<dependency>
-			<groupId>com.datastax.cassandra</groupId>
-			<artifactId>cassandra-driver-core</artifactId>
+			<groupId>org.apache.cassandra</groupId>
+			<artifactId>java-driver-core-shaded</artifactId>
 			<version>${driver.version}</version>
-			<classifier>shaded</classifier>
 			<exclusions>
-				<!--Because the shaded JAR uses netty original POM, we still need to exclude netty explicitly-->
-				<exclusion>
-					<groupId>io.netty</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>org.slf4j</groupId>
-					<artifactId>log4j-over-slf4j</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>ch.qos.logback</groupId>
-					<artifactId>logback-classic</artifactId>
-				</exclusion>
-				<!--The next 3 are optional dependencies and are unused-->
-				<exclusion>
-					<groupId>com.github.jnr</groupId>
-					<artifactId>jnr-ffi</artifactId>
-				</exclusion>
+				<!--Optional native access, the driver falls back to pure Java when it is absent-->
 				<exclusion>
 					<groupId>com.github.jnr</groupId>
 					<artifactId>jnr-posix</artifactId>
 				</exclusion>
-				<exclusion>
-					<groupId>com.fasterxml.jackson.core</groupId>
-					<artifactId>jackson-databind</artifactId>
-				</exclusion>
 			</exclusions>
 		</dependency>
 
 		<dependency>
-			<groupId>com.datastax.cassandra</groupId>
-			<artifactId>cassandra-driver-mapping</artifactId>
+			<groupId>org.apache.cassandra</groupId>
+			<artifactId>java-driver-query-builder</artifactId>
 			<version>${driver.version}</version>
 			<exclusions>
 				<!--use the shaded driver above-->
 				<exclusion>
-					<groupId>com.datastax.cassandra</groupId>
-					<artifactId>cassandra-driver-core</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>org.slf4j</groupId>
-					<artifactId>log4j-over-slf4j</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>ch.qos.logback</groupId>
-					<artifactId>logback-classic</artifactId>
+					<groupId>org.apache.cassandra</groupId>
+					<artifactId>java-driver-core</artifactId>
 				</exclusion>
 			</exclusions>
 		</dependency>
 
-		<!-- guava already surfaces in the API of cassandra driver so we can use the unshaded one -->
+		<!--Only the mapper annotations are used, entities are mapped by the connector at runtime-->
 		<dependency>
-			<groupId>com.google.guava</groupId>
-			<artifactId>guava</artifactId>
-			<version>${guava.version}</version>
+			<groupId>org.apache.cassandra</groupId>
+			<artifactId>java-driver-mapper-runtime</artifactId>
+			<version>${driver.version}</version>
+			<exclusions>
+				<!--use the shaded driver above-->
+				<exclusion>
+					<groupId>org.apache.cassandra</groupId>
+					<artifactId>java-driver-core</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 
 		<!-- Logging API -->
@@ -397,18 +373,17 @@ under the License.
 				
 				WHY WE NEED THE SHADED JAR:
 				- Flink SQL Client requires all dependencies to be bundled in a single jar
-				- DataStax Cassandra driver has complex transitive dependencies (Guava, Netty, etc.)
+				- Cassandra Java driver has complex transitive dependencies (Netty, Jackson, Guava, etc.)
 				- Version conflicts can occur when users have different versions of these dependencies
-				- The shaded jar relocates conflicting dependencies to avoid classpath issues
+				- The driver already relocates Netty, Jackson and Guava to avoid classpath issues
 				
 				WHEN TO USE EACH JAR:
 				- Use REGULAR jar: For programmatic API usage when you manage dependencies yourself
 				- Use SHADED jar: For Flink SQL Client, standalone deployments, or to avoid dependency conflicts
 				
 				SHADING DETAILS:
-				- Includes: DataStax driver (core + mapping) and Guava
-				- Relocates: Guava packages to org.apache.flink.cassandra.shaded.com.google.*
-				- Excludes: Protobuf and Guice to avoid breaking other Flink components
+				- Includes: Cassandra Java driver (shaded core, query builder, mapper runtime) and its
+				  mandatory runtime dependencies
 				- Filters: Removes signature files and Maven metadata to prevent conflicts
 			-->
 			<plugin>
@@ -448,25 +423,20 @@ under the License.
 							</filters>
 
 
-							<!-- Only include DataStax Cassandra driver and Guava in the shaded jar -->
+							<!-- Only include the Cassandra Java driver and its runtime dependencies in the shaded jar -->
 							<artifactSet>
 								<includes>
-									<include>com.datastax.cassandra:cassandra-driver-core:shaded</include>
-									<include>com.datastax.cassandra:cassandra-driver-mapping</include>
-									<include>com.google.guava:guava</include>
+									<include>org.apache.cassandra:java-driver-core-shaded</include>
+									<include>org.apache.cassandra:java-driver-query-builder</include>
+									<include>org.apache.cassandra:java-driver-mapper-runtime</include>
+									<include>org.apache.cassandra:java-driver-guava-shaded</include>
+									<include>com.datastax.oss:native-protocol</include>
+									<include>com.typesafe:config</include>
+									<include>io.dropwizard.metrics:metrics-core</include>
+									<include>org.hdrhistogram:HdrHistogram</include>
+									<include>org.reactivestreams:reactive-streams</include>
 								</includes>
 							</artifactSet>
-
-							<relocations>
-								<relocation>
-									<pattern>com.google</pattern>
-									<shadedPattern>org.apache.flink.cassandra.shaded.com.google</shadedPattern>
-									<excludes>
-										<exclude>com.google.protobuf.**</exclude>
-										<exclude>com.google.inject.**</exclude>
-									</excludes>
-								</relocation>
-							</relocations>
 						</configuration>
 					</execution>
 				</executions>

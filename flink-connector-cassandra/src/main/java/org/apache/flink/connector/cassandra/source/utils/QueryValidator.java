@@ -19,15 +19,16 @@
 package org.apache.flink.connector.cassandra.source.utils;
 
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 
-import com.datastax.driver.core.ColumnMetadata;
-import com.datastax.driver.core.IndexMetadata;
-import com.datastax.driver.core.Metadata;
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.metadata.Metadata;
+import com.datastax.oss.driver.api.core.metadata.schema.IndexMetadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -49,8 +50,11 @@ public class QueryValidator {
     private static final Logger LOG = LoggerFactory.getLogger(QueryValidator.class);
     private final Metadata clusterMetadata;
 
-    public QueryValidator(ClusterBuilder clusterBuilder) {
-        this.clusterMetadata = clusterBuilder.getCluster().getMetadata();
+    public QueryValidator(CassandraSessionBuilder sessionBuilder) {
+        // the metadata is an immutable snapshot, it can be used after the session is closed
+        try (CqlSession session = sessionBuilder.getSession()) {
+            this.clusterMetadata = session.getMetadata();
+        }
     }
 
     public Matcher checkQueryValidity(String query) {
@@ -84,7 +88,7 @@ public class QueryValidator {
     @VisibleForTesting
     public boolean filtersOnPartitionKey(
             Set<String> filteringColumns, String keyspace, String table) {
-        final Set<String> partitionKeyColumns =
+        final List<String> partitionKeyColumns =
                 CassandraUtils.getPartitionKey(keyspace, table, clusterMetadata);
         return filteringColumns.containsAll(partitionKeyColumns);
     }
@@ -92,7 +96,8 @@ public class QueryValidator {
     @VisibleForTesting
     public boolean isIndexedColumn(String columnName, String keyspace, String table) {
         final Set<String> indexes =
-                clusterMetadata.getKeyspace(keyspace).getTable(table).getIndexes().stream()
+                CassandraUtils.getTable(keyspace, table, clusterMetadata).getIndexes().values()
+                        .stream()
                         .map(IndexMetadata::getTarget)
                         .collect(Collectors.toSet());
         return indexes.contains(columnName);
@@ -101,8 +106,8 @@ public class QueryValidator {
     @VisibleForTesting
     public boolean isPrimaryKeyColumn(String columnName, String keyspace, String table) {
         final Set<String> keyColumns =
-                clusterMetadata.getKeyspace(keyspace).getTable(table).getPrimaryKey().stream()
-                        .map(ColumnMetadata::getName)
+                CassandraUtils.getTable(keyspace, table, clusterMetadata).getPrimaryKey().stream()
+                        .map(column -> column.getName().asInternal())
                         .collect(Collectors.toSet());
         return keyColumns.contains(columnName);
     }

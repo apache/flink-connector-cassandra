@@ -42,10 +42,8 @@ import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplitSerializer;
 import org.apache.flink.connector.cassandra.source.utils.QueryValidator;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
-import org.apache.flink.streaming.connectors.cassandra.MapperOptions;
-
-import com.datastax.driver.mapping.MappingManager;
+import org.apache.flink.streaming.connectors.cassandra.CassandraMapperOptions;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -60,9 +58,9 @@ import static org.apache.flink.util.Preconditions.checkState;
  * org.apache.flink.streaming.api.datastream.DataStream}:
  *
  * <ul>
- *   <li><b>DataStream API with POJOs</b>: Uses {@link CassandraRowToPojoConverter} with Cassandra's
- *       {@link MappingManager} to convert cassandra's {@link com.datastax.driver.core.Row} to
- *       annotated POJOs
+ *   <li><b>DataStream API with POJOs</b>: Uses {@link CassandraRowToPojoConverter} to convert
+ *       cassandra's {@link com.datastax.oss.driver.api.core.cql.Row} to POJOs annotated with {@link
+ *       com.datastax.oss.driver.api.mapper.annotations.Entity}
  *   <li><b>Table/SQL API</b>: Uses {@link CassandraRowToRowDataConverter} with field-based mapping
  *       to convert rows to {@link org.apache.flink.table.data.RowData}
  * </ul>
@@ -74,19 +72,22 @@ import static org.apache.flink.util.Preconditions.checkState;
  * <p>For DataStream applications using POJOs with Cassandra annotations:
  *
  * <pre>{@code
- * ClusterBuilder clusterBuilder = new ClusterBuilder() {
+ * CassandraSessionBuilder sessionBuilder = new CassandraSessionBuilder() {
  *   @Override
- *   protected Cluster buildCluster(Cluster.Builder builder) {
- *     return builder.addContactPointsWithPorts(new InetSocketAddress(HOST, PORT))
- *                   .withQueryOptions(new QueryOptions().setConsistencyLevel(CL))
+ *   protected CqlSession buildSession(CqlSessionBuilder builder) {
+ *     return builder.addContactPoint(new InetSocketAddress(HOST, PORT))
+ *                   .withLocalDatacenter(LOCAL_DATACENTER)
+ *                   .withConfigLoader(
+ *                       DriverConfigLoader.programmaticBuilder()
+ *                           .withString(DefaultDriverOption.REQUEST_CONSISTENCY, CL)
+ *                           .build())
  *                   .build();
  *   }
  * };
  *
  * CassandraSource<Pojo> source = CassandraSource.builder()
- *     .setClusterBuilder(clusterBuilder)
+ *     .setSessionBuilder(sessionBuilder)
  *     .setQuery("SELECT * FROM my_keyspace.my_table")
- *     .setMapperOptions(() -> new Mapper.Option[] {Mapper.Option.saveNullFields(true)})
  *     .buildForPojo(Pojo.class);
  *
  * DataStream<Pojo> stream = env.fromSource(source, WatermarkStrategy.noWatermarks(), "CassandraSource");
@@ -98,7 +99,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  * creates and configures the CassandraSource internally:
  *
  * <pre>{@code
- * // Create Cassandra table using SQL DDL with custom ClusterBuilder
+ * // Create Cassandra table using SQL DDL with custom CassandraSessionBuilder
  * tableEnv.executeSql(
  *     "CREATE TABLE users (" +
  *     "  id INT," +
@@ -110,7 +111,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  *     "  'hosts' = 'localhost:9042'," +
  *     "  'keyspace' = 'my_keyspace'," +
  *     "  'table' = 'users'," +
- *     "  'cluster-builder-class' = 'com.example.MyCustomClusterBuilder'" +
+ *     "  'session-builder-class' = 'com.example.MyCustomSessionBuilder'" +
  *     ")"
  * );
  *
@@ -123,10 +124,10 @@ import static org.apache.flink.util.Preconditions.checkState;
  * <p><strong>Connection Configuration:</strong>
  *
  * <ul>
- *   <li><strong>Priority 1:</strong> 'cluster-builder-class' - if provided, uses custom
- *       ClusterBuilder (ignores hosts/port/username/password)
+ *   <li><strong>Priority 1:</strong> 'session-builder-class' - if provided, uses custom
+ *       CassandraSessionBuilder (ignores hosts/port/username/password)
  *   <li><strong>Priority 2:</strong> 'hosts', 'port', 'username', 'password' - if no
- *       cluster-builder-class, uses default CassandraClusterBuilder
+ *       session-builder-class, uses the default CassandraSessionBuilder
  * </ul>
  *
  * <p><strong>Query Configuration:</strong>
@@ -158,7 +159,7 @@ public class CassandraSource<OUT>
 
     private static final long serialVersionUID = 1L;
 
-    private final ClusterBuilder clusterBuilder;
+    private final CassandraSessionBuilder sessionBuilder;
     private final String query;
     private final String keyspace;
     private final String table;
@@ -177,11 +178,11 @@ public class CassandraSource<OUT>
     }
 
     CassandraSource(
-            ClusterBuilder clusterBuilder,
+            CassandraSessionBuilder sessionBuilder,
             long maxSplitMemorySize,
             CassandraRowToTypeConverter<OUT> rowToTypeConverter,
             String query) {
-        checkNotNull(clusterBuilder, "ClusterBuilder required but not provided");
+        checkNotNull(sessionBuilder, "CassandraSessionBuilder required but not provided");
         checkNotNull(rowToTypeConverter, "Row converter required but not provided");
         checkNotNull(query, "query required but not provided");
         checkState(
@@ -190,35 +191,41 @@ public class CassandraSource<OUT>
                 maxSplitMemorySize,
                 MIN_SPLIT_MEMORY_SIZE);
         this.maxSplitMemorySize = maxSplitMemorySize;
-        final QueryValidator queryValidator = new QueryValidator(clusterBuilder);
+        final QueryValidator queryValidator = new QueryValidator(sessionBuilder);
         final Matcher queryMatcher = queryValidator.checkQueryValidity(query);
         this.query = query;
         this.keyspace = queryMatcher.group(1);
         this.table = queryMatcher.group(2);
-        this.clusterBuilder = clusterBuilder;
-        ClosureCleaner.clean(clusterBuilder, ExecutionConfig.ClosureCleanerLevel.RECURSIVE, true);
+        this.sessionBuilder = sessionBuilder;
+        ClosureCleaner.clean(sessionBuilder, ExecutionConfig.ClosureCleanerLevel.RECURSIVE, true);
         this.rowToTypeConverter = rowToTypeConverter;
     }
 
     /** @deprecated Use {@link #builder()} instead. */
     @Deprecated
     public CassandraSource(
-            ClusterBuilder clusterBuilder,
+            CassandraSessionBuilder sessionBuilder,
             Class<OUT> pojoClass,
             String query,
-            MapperOptions mapperOptions) {
-        this(clusterBuilder, MAX_SPLIT_MEMORY_SIZE_DEFAULT, pojoClass, query, mapperOptions);
+            CassandraMapperOptions mapperOptions) {
+        this(sessionBuilder, MAX_SPLIT_MEMORY_SIZE_DEFAULT, pojoClass, query, mapperOptions);
     }
 
-    /** @deprecated Use {@link #builder()} instead. */
+    /**
+     * Creates the source.
+     *
+     * @param mapperOptions the mapper options, they only configure writes and are not used by the
+     *     source
+     * @deprecated Use {@link #builder()} instead.
+     */
     @Deprecated
     public CassandraSource(
-            ClusterBuilder clusterBuilder,
+            CassandraSessionBuilder sessionBuilder,
             long maxSplitMemorySize,
             Class<OUT> pojoClass,
             String query,
-            MapperOptions mapperOptions) {
-        checkNotNull(clusterBuilder, "ClusterBuilder required but not provided");
+            CassandraMapperOptions mapperOptions) {
+        checkNotNull(sessionBuilder, "CassandraSessionBuilder required but not provided");
         checkNotNull(pojoClass, "POJO class required but not provided");
         checkNotNull(query, "query required but not provided");
         checkState(
@@ -227,15 +234,14 @@ public class CassandraSource<OUT>
                 maxSplitMemorySize,
                 MIN_SPLIT_MEMORY_SIZE);
         this.maxSplitMemorySize = maxSplitMemorySize;
-        final QueryValidator queryValidator = new QueryValidator(clusterBuilder);
+        final QueryValidator queryValidator = new QueryValidator(sessionBuilder);
         final Matcher queryMatcher = queryValidator.checkQueryValidity(query);
         this.query = query;
         this.keyspace = queryMatcher.group(1);
         this.table = queryMatcher.group(2);
-        this.clusterBuilder = clusterBuilder;
-        ClosureCleaner.clean(clusterBuilder, ExecutionConfig.ClosureCleanerLevel.RECURSIVE, true);
-        this.rowToTypeConverter =
-                new CassandraRowToPojoConverter<>(pojoClass, mapperOptions, clusterBuilder);
+        this.sessionBuilder = sessionBuilder;
+        ClosureCleaner.clean(sessionBuilder, ExecutionConfig.ClosureCleanerLevel.RECURSIVE, true);
+        this.rowToTypeConverter = new CassandraRowToPojoConverter<>(pojoClass);
     }
 
     @Override
@@ -247,7 +253,7 @@ public class CassandraSource<OUT>
     @Override
     public SourceReader<OUT, CassandraSplit> createReader(SourceReaderContext readerContext) {
         return new CassandraSourceReaderFactory<OUT>()
-                .create(readerContext, clusterBuilder, rowToTypeConverter, query, keyspace, table);
+                .create(readerContext, sessionBuilder, rowToTypeConverter, query, keyspace, table);
     }
 
     @Internal
@@ -255,7 +261,7 @@ public class CassandraSource<OUT>
     public SplitEnumerator<CassandraSplit, CassandraEnumeratorState> createEnumerator(
             SplitEnumeratorContext<CassandraSplit> enumContext) {
         return new CassandraSplitEnumerator(
-                enumContext, null, clusterBuilder, maxSplitMemorySize, keyspace, table);
+                enumContext, null, sessionBuilder, maxSplitMemorySize, keyspace, table);
     }
 
     @Internal
@@ -264,7 +270,7 @@ public class CassandraSource<OUT>
             SplitEnumeratorContext<CassandraSplit> enumContext,
             CassandraEnumeratorState enumCheckpoint) {
         return new CassandraSplitEnumerator(
-                enumContext, enumCheckpoint, clusterBuilder, maxSplitMemorySize, keyspace, table);
+                enumContext, enumCheckpoint, sessionBuilder, maxSplitMemorySize, keyspace, table);
     }
 
     @Internal

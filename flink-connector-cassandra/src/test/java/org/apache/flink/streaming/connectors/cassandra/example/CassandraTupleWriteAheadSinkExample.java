@@ -24,11 +24,13 @@ import org.apache.flink.runtime.state.filesystem.FsStateBackend;
 import org.apache.flink.streaming.api.checkpoint.ListCheckpointed;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 import org.apache.flink.streaming.connectors.cassandra.CassandraSink;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
 
-import com.datastax.driver.core.Cluster;
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.CqlSessionBuilder;
 
+import java.net.InetSocketAddress;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -59,15 +61,18 @@ public class CassandraTupleWriteAheadSinkExample {
                 CassandraSink.addSink(env.addSource(new MySource()))
                         .setQuery("INSERT INTO example.values (id, counter) values (?, ?);")
                         .enableWriteAheadLog()
-                        .setClusterBuilder(
-                                new ClusterBuilder() {
+                        .setSessionBuilder(
+                                new CassandraSessionBuilder() {
 
                                     private static final long serialVersionUID =
                                             2793938419775311824L;
 
                                     @Override
-                                    public Cluster buildCluster(Cluster.Builder builder) {
-                                        return builder.addContactPoint("127.0.0.1").build();
+                                    public CqlSession buildSession(CqlSessionBuilder builder) {
+                                        return builder.addContactPoint(
+                                                        new InetSocketAddress("127.0.0.1", 9042))
+                                                .withLocalDatacenter("datacenter1")
+                                                .build();
                                     }
                                 })
                         .build();

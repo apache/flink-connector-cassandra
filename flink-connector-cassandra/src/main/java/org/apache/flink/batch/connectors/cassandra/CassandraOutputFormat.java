@@ -18,7 +18,7 @@
 package org.apache.flink.batch.connectors.cassandra;
 
 import org.apache.flink.api.java.tuple.Tuple;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 
 /**
  * OutputFormat to write Flink {@link Tuple}s into a Cassandra cluster.
@@ -29,7 +29,7 @@ import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
 @Deprecated
 public class CassandraOutputFormat<OUT extends Tuple> extends CassandraTupleOutputFormat<OUT> {
 
-    public CassandraOutputFormat(String insertQuery, ClusterBuilder builder) {
+    public CassandraOutputFormat(String insertQuery, CassandraSessionBuilder builder) {
         super(insertQuery, builder);
     }
 }

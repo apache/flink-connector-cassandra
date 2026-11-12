@@ -19,19 +19,21 @@ package org.apache.flink.streaming.connectors.cassandra.example;
 
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.connectors.cassandra.CassandraMapperOptions;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 import org.apache.flink.streaming.connectors.cassandra.CassandraSink;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.Cluster.Builder;
-import com.datastax.driver.mapping.Mapper;
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.CqlSessionBuilder;
 
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 
 /**
  * This is an example showing the to use the Pojo Cassandra Sink in the Streaming API.
  *
- * <p>Pojo's have to be annotated with datastax annotations to work with this sink.
+ * <p>Pojo's have to be annotated with the Cassandra Java driver mapper annotations to work with
+ * this sink.
  *
  * <p>The example assumes that a table exists in a local cassandra database, according to the
  * following queries: CREATE KEYSPACE IF NOT EXISTS test WITH replication = {'class':
@@ -53,14 +55,17 @@ public class CassandraPojoSinkExample {
         DataStreamSource<Message> source = env.fromCollection(messages);
 
         CassandraSink.addSink(source)
-                .setClusterBuilder(
-                        new ClusterBuilder() {
+                .setSessionBuilder(
+                        new CassandraSessionBuilder() {
                             @Override
-                            protected Cluster buildCluster(Builder builder) {
-                                return builder.addContactPoint("127.0.0.1").build();
+                            protected CqlSession buildSession(CqlSessionBuilder builder) {
+                                return builder.addContactPoint(
+                                                new InetSocketAddress("127.0.0.1", 9042))
+                                        .withLocalDatacenter("datacenter1")
+                                        .build();
                             }
                         })
-                .setMapperOptions(() -> new Mapper.Option[] {Mapper.Option.saveNullFields(true)})
+                .setMapperOptions(new CassandraMapperOptions().saveNullFields(true))
                 .build();
 
         env.execute("Cassandra Sink example");

@@ -32,20 +32,23 @@ import java.util.Properties;
 /** An {@link AppendStreamTableSink} to write an append stream Table to a Cassandra table. */
 public class CassandraAppendTableSink implements AppendStreamTableSink<Row> {
 
-    private final ClusterBuilder builder;
+    private final CassandraSessionBuilder builder;
     private final String cql;
     private String[] fieldNames;
     private TypeInformation[] fieldTypes;
     private final Properties properties;
 
-    public CassandraAppendTableSink(ClusterBuilder builder, String cql) {
-        this.builder = Preconditions.checkNotNull(builder, "ClusterBuilder must not be null.");
+    public CassandraAppendTableSink(CassandraSessionBuilder builder, String cql) {
+        this.builder =
+                Preconditions.checkNotNull(builder, "CassandraSessionBuilder must not be null.");
         this.cql = Preconditions.checkNotNull(cql, "CQL query must not be null.");
         this.properties = new Properties();
     }
 
-    public CassandraAppendTableSink(ClusterBuilder builder, String cql, Properties properties) {
-        this.builder = Preconditions.checkNotNull(builder, "ClusterBuilder must not be null.");
+    public CassandraAppendTableSink(
+            CassandraSessionBuilder builder, String cql, Properties properties) {
+        this.builder =
+                Preconditions.checkNotNull(builder, "CassandraSessionBuilder must not be null.");
         this.cql = Preconditions.checkNotNull(cql, "CQL query must not be null.");
         this.properties = Preconditions.checkNotNull(properties, "Properties must not be null.");
     }

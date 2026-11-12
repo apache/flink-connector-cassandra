@@ -20,24 +20,24 @@ package org.apache.flink.connector.cassandra;
 
 import org.apache.flink.connector.cassandra.source.utils.QueryValidator;
 import org.apache.flink.connector.testframe.TestResource;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.ConsistencyLevel;
-import com.datastax.driver.core.QueryOptions;
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.Row;
-import com.datastax.driver.core.Session;
-import com.datastax.driver.core.SimpleStatement;
-import com.datastax.driver.core.SocketOptions;
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.CqlSessionBuilder;
+import com.datastax.oss.driver.api.core.DefaultConsistencyLevel;
+import com.datastax.oss.driver.api.core.config.DefaultDriverOption;
+import com.datastax.oss.driver.api.core.config.DriverConfigLoader;
+import com.datastax.oss.driver.api.core.cql.ResultSet;
+import com.datastax.oss.driver.api.core.cql.Row;
+import com.datastax.oss.driver.api.core.cql.SimpleStatement;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testcontainers.containers.CassandraContainer;
+import org.testcontainers.cassandra.CassandraContainer;
+import org.testcontainers.cassandra.wait.CassandraQueryWaitStrategy;
 import org.testcontainers.containers.Container.ExecResult;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.output.OutputFrame;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
-import org.testcontainers.containers.wait.CassandraQueryWaitStrategy;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.MountableFile;
@@ -49,7 +49,7 @@ import java.util.List;
 
 /**
  * Junit test environment that contains everything needed at the test suite level: testContainer
- * setup, keyspace setup, Cassandra cluster/session management ClusterBuilder setup).
+ * setup, keyspace setup, Cassandra session management CassandraSessionBuilder setup).
  */
 @Testcontainers
 public class CassandraTestEnvironment implements TestResource {
@@ -95,39 +95,35 @@ public class CassandraTestEnvironment implements TestResource {
     @Container private final CassandraContainer cassandraContainer2;
 
     boolean insertTestDataForSplitSizeTests;
-    private Cluster cluster;
-    private Session session;
-    private ClusterBuilder builderForReading;
-    private ClusterBuilder builderForWriting;
-    private QueryValidator queryValidator;
+    private CqlSession session;
+    private CassandraSessionBuilder builderForReading;
+    private CassandraSessionBuilder builderForWriting;
 
     public CassandraTestEnvironment(boolean insertTestDataForSplitSizeTests) {
         this.insertTestDataForSplitSizeTests = insertTestDataForSplitSizeTests;
 
         Network network = Network.newNetwork();
         cassandraContainer1 =
-                (CassandraContainer)
-                        new CassandraContainer(DOCKER_CASSANDRA_IMAGE)
-                                .withNetwork(network)
-                                .withEnv("CASSANDRA_CLUSTER_NAME", "testcontainers")
-                                .withEnv("CASSANDRA_SEEDS", "cassandra")
-                                .withEnv("JVM_OPTS", "")
-                                .withNetworkAliases("cassandra")
-                                .withCopyFileToContainer(
-                                        MountableFile.forClasspathResource("cassandra.yaml"),
-                                        "/etc/cassandra/cassandra.yaml" // for timeouts
-                                        );
+                new CassandraContainer(DOCKER_CASSANDRA_IMAGE)
+                        .withNetwork(network)
+                        .withEnv("CASSANDRA_CLUSTER_NAME", "testcontainers")
+                        .withEnv("CASSANDRA_SEEDS", "cassandra")
+                        .withEnv("JVM_OPTS", "")
+                        .withNetworkAliases("cassandra")
+                        .withCopyFileToContainer(
+                                MountableFile.forClasspathResource("cassandra.yaml"),
+                                "/etc/cassandra/cassandra.yaml" // for timeouts
+                                );
         cassandraContainer2 =
-                (CassandraContainer)
-                        new CassandraContainer(DOCKER_CASSANDRA_IMAGE)
-                                .withNetwork(network)
-                                .withEnv("CASSANDRA_CLUSTER_NAME", "testcontainers")
-                                .withEnv("JVM_OPTS", "")
-                                .withEnv("CASSANDRA_SEEDS", "cassandra")
-                                .withCopyFileToContainer(
-                                        MountableFile.forClasspathResource("cassandra.yaml"),
-                                        "/etc/cassandra/cassandra.yaml" // for timeouts
-                                        );
+                new CassandraContainer(DOCKER_CASSANDRA_IMAGE)
+                        .withNetwork(network)
+                        .withEnv("CASSANDRA_CLUSTER_NAME", "testcontainers")
+                        .withEnv("JVM_OPTS", "")
+                        .withEnv("CASSANDRA_SEEDS", "cassandra")
+                        .withCopyFileToContainer(
+                                MountableFile.forClasspathResource("cassandra.yaml"),
+                                "/etc/cassandra/cassandra.yaml" // for timeouts
+                                );
     }
 
     @Override
@@ -163,20 +159,20 @@ public class CassandraTestEnvironment implements TestResource {
                 OutputFrame.OutputType.STDERR,
                 OutputFrame.OutputType.STDOUT);
 
-        cluster = cassandraContainer1.getCluster();
         // ConsistencyLevel.ONE is the minimum level for reading
         builderForReading =
                 createBuilderWithConsistencyLevel(
-                        ConsistencyLevel.ONE,
+                        DefaultConsistencyLevel.ONE,
                         cassandraContainer1.getHost(),
-                        cassandraContainer1.getMappedPort(CQL_PORT));
-        queryValidator = new QueryValidator(builderForReading);
+                        cassandraContainer1.getMappedPort(CQL_PORT),
+                        cassandraContainer1.getLocalDatacenter());
         builderForWriting =
                 createBuilderWithConsistencyLevel(
-                        ConsistencyLevel.ONE,
+                        DefaultConsistencyLevel.ONE,
                         cassandraContainer1.getHost(),
-                        cassandraContainer1.getMappedPort(CQL_PORT));
-        session = cluster.connect();
+                        cassandraContainer1.getMappedPort(CQL_PORT),
+                        cassandraContainer1.getLocalDatacenter());
+        session = builderForWriting.getSession();
         executeRequestWithTimeout(CREATE_KEYSPACE_QUERY);
         // create a dedicated table for split size tests
         if (insertTestDataForSplitSizeTests) {
@@ -198,9 +194,6 @@ public class CassandraTestEnvironment implements TestResource {
         if (session != null) {
             session.close();
         }
-        if (cluster != null) {
-            cluster.close();
-        }
         try {
             cassandraContainer1.stop();
         } catch (Exception e) {
@@ -215,23 +208,40 @@ public class CassandraTestEnvironment implements TestResource {
         }
     }
 
-    private ClusterBuilder createBuilderWithConsistencyLevel(
-            ConsistencyLevel consistencyLevel, String host, int port) {
-        return new ClusterBuilder() {
+    private CassandraSessionBuilder createBuilderWithConsistencyLevel(
+            DefaultConsistencyLevel consistencyLevel,
+            String host,
+            int port,
+            String localDatacenter) {
+        return new CassandraSessionBuilder() {
             @Override
-            protected Cluster buildCluster(Cluster.Builder builder) {
-                return builder.addContactPointsWithPorts(new InetSocketAddress(host, port))
-                        .withQueryOptions(
-                                new QueryOptions()
-                                        .setConsistencyLevel(consistencyLevel)
-                                        .setSerialConsistencyLevel(ConsistencyLevel.LOCAL_SERIAL))
-                        .withSocketOptions(
-                                new SocketOptions()
+            protected CqlSession buildSession(CqlSessionBuilder builder) {
+                return builder.addContactPoint(new InetSocketAddress(host, port))
+                        .withLocalDatacenter(localDatacenter)
+                        .withConfigLoader(
+                                DriverConfigLoader.programmaticBuilder()
+                                        .withString(
+                                                DefaultDriverOption.REQUEST_CONSISTENCY,
+                                                consistencyLevel.name())
+                                        .withString(
+                                                DefaultDriverOption.REQUEST_SERIAL_CONSISTENCY,
+                                                DefaultConsistencyLevel.LOCAL_SERIAL.name())
                                         // default timeout x 3
-                                        .setConnectTimeoutMillis(15000)
+                                        .withDuration(
+                                                DefaultDriverOption.CONNECTION_CONNECT_TIMEOUT,
+                                                Duration.ofMillis(15000))
+                                        .withDuration(
+                                                DefaultDriverOption.CONNECTION_INIT_QUERY_TIMEOUT,
+                                                Duration.ofMillis(15000))
+                                        .withDuration(
+                                                DefaultDriverOption.CONTROL_CONNECTION_TIMEOUT,
+                                                Duration.ofMillis(15000))
                                         // default timeout x3 and higher than
                                         // request_timeout_in_ms at the cluster level
-                                        .setReadTimeoutMillis(READ_TIMEOUT_MILLIS))
+                                        .withDuration(
+                                                DefaultDriverOption.REQUEST_TIMEOUT,
+                                                Duration.ofMillis(READ_TIMEOUT_MILLIS))
+                                        .build())
                         .build();
             }
         };
@@ -259,32 +269,38 @@ public class CassandraTestEnvironment implements TestResource {
             Thread.sleep(1000);
             partitions =
                     session.execute(
-                                    "SELECT range_start, range_end, partitions_count, mean_partition_size FROM "
-                                            + "system.size_estimates WHERE keyspace_name = ? AND table_name = ?",
-                                    KEYSPACE,
-                                    table)
+                                    SimpleStatement.newInstance(
+                                            "SELECT range_start, range_end, partitions_count, mean_partition_size FROM "
+                                                    + "system.size_estimates WHERE keyspace_name = ? AND table_name = ?",
+                                            KEYSPACE,
+                                            table))
                             .all();
         }
     }
 
     public ResultSet executeRequestWithTimeout(String query) {
         return session.execute(
-                new SimpleStatement(query).setReadTimeoutMillis(READ_TIMEOUT_MILLIS));
+                SimpleStatement.newInstance(query)
+                        .setTimeout(Duration.ofMillis(READ_TIMEOUT_MILLIS)));
     }
 
-    public ClusterBuilder getBuilderForReading() {
+    public CassandraSessionBuilder getBuilderForReading() {
         return builderForReading;
     }
 
-    public ClusterBuilder getBuilderForWriting() {
+    public CassandraSessionBuilder getBuilderForWriting() {
         return builderForWriting;
     }
 
+    /**
+     * Creates a validator with the current schema of the cluster, the driver metadata is an
+     * immutable snapshot.
+     */
     public QueryValidator getQueryValidator() {
-        return queryValidator;
+        return new QueryValidator(builderForReading);
     }
 
-    public Session getSession() {
+    public CqlSession getSession() {
         return session;
     }
 

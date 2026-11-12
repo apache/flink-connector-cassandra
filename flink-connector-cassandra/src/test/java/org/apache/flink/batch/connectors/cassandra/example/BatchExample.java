@@ -24,11 +24,12 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.typeutils.TupleTypeInfo;
 import org.apache.flink.batch.connectors.cassandra.CassandraInputFormat;
 import org.apache.flink.batch.connectors.cassandra.CassandraTupleOutputFormat;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.Cluster.Builder;
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.CqlSessionBuilder;
 
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 
 /**
@@ -62,10 +63,13 @@ public class BatchExample {
         dataSet.output(
                 new CassandraTupleOutputFormat<Tuple2<Integer, String>>(
                         INSERT_QUERY,
-                        new ClusterBuilder() {
+                        new CassandraSessionBuilder() {
                             @Override
-                            protected Cluster buildCluster(Builder builder) {
-                                return builder.addContactPoints("127.0.0.1").build();
+                            protected CqlSession buildSession(CqlSessionBuilder builder) {
+                                return builder.addContactPoint(
+                                                new InetSocketAddress("127.0.0.1", 9042))
+                                        .withLocalDatacenter("datacenter1")
+                                        .build();
                             }
                         }));
 
@@ -75,10 +79,13 @@ public class BatchExample {
                 env.createInput(
                         new CassandraInputFormat<Tuple2<Integer, String>>(
                                 SELECT_QUERY,
-                                new ClusterBuilder() {
+                                new CassandraSessionBuilder() {
                                     @Override
-                                    protected Cluster buildCluster(Builder builder) {
-                                        return builder.addContactPoints("127.0.0.1").build();
+                                    protected CqlSession buildSession(CqlSessionBuilder builder) {
+                                        return builder.addContactPoint(
+                                                        new InetSocketAddress("127.0.0.1", 9042))
+                                                .withLocalDatacenter("datacenter1")
+                                                .build();
                                     }
                                 }),
                         TupleTypeInfo.of(new TypeHint<Tuple2<Integer, String>>() {}));

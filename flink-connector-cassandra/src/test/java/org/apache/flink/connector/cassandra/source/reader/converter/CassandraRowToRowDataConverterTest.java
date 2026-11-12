@@ -27,9 +27,8 @@ import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.table.types.logical.VarCharType;
 
-import com.datastax.driver.core.ColumnDefinitions;
-import com.datastax.driver.core.DataType;
-import com.datastax.driver.core.Row;
+import com.datastax.oss.driver.api.core.cql.Row;
+import com.datastax.oss.driver.api.core.type.DataTypes;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -151,14 +150,12 @@ class CassandraRowToRowDataConverterTest {
         // Set up mock Cassandra row data
         Row testRow = Mockito.mock(Row.class);
         CassandraRow testCassandraRow = Mockito.mock(CassandraRow.class);
-        ColumnDefinitions columnDefinitions = Mockito.mock(ColumnDefinitions.class);
         when(testCassandraRow.getRow()).thenReturn(testRow);
-        when(testRow.getColumnDefinitions()).thenReturn(columnDefinitions);
 
         // Mock column types to match the original RowType
-        when(columnDefinitions.getType("age")).thenReturn(DataType.cint());
-        when(columnDefinitions.getType("name")).thenReturn(DataType.varchar());
-        when(columnDefinitions.getType("city")).thenReturn(DataType.varchar());
+        when(testRow.getType("age")).thenReturn(DataTypes.INT);
+        when(testRow.getType("name")).thenReturn(DataTypes.TEXT);
+        when(testRow.getType("city")).thenReturn(DataTypes.TEXT);
 
         // Mock data retrieval - the converter should look for these exact field names
         when(testRow.getInt("age")).thenReturn(25);

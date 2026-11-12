@@ -26,18 +26,16 @@ import org.apache.flink.api.java.typeutils.runtime.TupleSerializer;
 import org.apache.flink.streaming.runtime.operators.CheckpointCommitter;
 import org.apache.flink.streaming.runtime.operators.GenericWriteAheadSink;
 
-import com.datastax.driver.core.BoundStatement;
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.PreparedStatement;
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.ResultSetFuture;
-import com.datastax.driver.core.Session;
-import com.google.common.util.concurrent.FutureCallback;
-import com.google.common.util.concurrent.Futures;
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.cql.AsyncResultSet;
+import com.datastax.oss.driver.api.core.cql.BoundStatement;
+import com.datastax.oss.driver.api.core.cql.PreparedStatement;
 
 import java.util.UUID;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 
 /**
  * Sink that emits its input elements into a Cassandra database. This sink stores incoming records
@@ -49,20 +47,19 @@ import java.util.concurrent.atomic.AtomicReference;
 public class CassandraTupleWriteAheadSink<IN extends Tuple> extends GenericWriteAheadSink<IN> {
     private static final long serialVersionUID = 1L;
 
-    protected transient Cluster cluster;
-    protected transient Session session;
+    protected transient CqlSession session;
 
     private final String insertQuery;
     private transient PreparedStatement preparedStatement;
 
-    private ClusterBuilder builder;
+    private CassandraSessionBuilder builder;
 
     private transient Object[] fields;
 
     protected CassandraTupleWriteAheadSink(
             String insertQuery,
             TypeSerializer<IN> serializer,
-            ClusterBuilder builder,
+            CassandraSessionBuilder builder,
             CheckpointCommitter committer)
             throws Exception {
         super(committer, serializer, UUID.randomUUID().toString().replace("-", "_"));
@@ -77,8 +74,7 @@ public class CassandraTupleWriteAheadSink<IN extends Tuple> extends GenericWrite
             throw new IllegalStateException(
                     "The write-ahead log requires checkpointing to be enabled.");
         }
-        cluster = builder.getCluster();
-        session = cluster.connect();
+        session = builder.getSession();
         preparedStatement = session.prepare(insertQuery);
 
         fields = new Object[((TupleSerializer<IN>) serializer).getArity()];
@@ -94,13 +90,6 @@ public class CassandraTupleWriteAheadSink<IN extends Tuple> extends GenericWrite
         } catch (Exception e) {
             LOG.error("Error while closing session.", e);
         }
-        try {
-            if (cluster != null) {
-                cluster.close();
-            }
-        } catch (Exception e) {
-            LOG.error("Error while closing cluster.", e);
-        }
     }
 
     @Override
@@ -111,10 +100,9 @@ public class CassandraTupleWriteAheadSink<IN extends Tuple> extends GenericWrite
 
         final AtomicReference<Throwable> exception = new AtomicReference<>();
 
-        FutureCallback<ResultSet> callback =
-                new FutureCallback<ResultSet>() {
-                    @Override
-                    public void onSuccess(ResultSet resultSet) {
+        BiConsumer<AsyncResultSet, Throwable> callback =
+                (resultSet, throwable) -> {
+                    if (throwable == null) {
                         updatesConfirmed.incrementAndGet();
                         if (updatesCount.get() > 0) { // only set if all updates have been sent
                             if (updatesCount.get() == updatesConfirmed.get()) {
@@ -123,15 +111,10 @@ public class CassandraTupleWriteAheadSink<IN extends Tuple> extends GenericWrite
                                 }
                             }
                         }
-                    }
-
-                    @Override
-                    public void onFailure(Throwable throwable) {
-                        if (exception.compareAndSet(null, throwable)) {
-                            LOG.error("Error while sending value.", throwable);
-                            synchronized (updatesConfirmed) {
-                                updatesConfirmed.notifyAll();
-                            }
+                    } else if (exception.compareAndSet(null, throwable)) {
+                        LOG.error("Error while sending value.", throwable);
+                        synchronized (updatesConfirmed) {
+                            updatesConfirmed.notifyAll();
                         }
                     }
                 };
@@ -143,13 +126,12 @@ public class CassandraTupleWriteAheadSink<IN extends Tuple> extends GenericWrite
                 fields[x] = value.getField(x);
             }
             // insert values and send to cassandra
-            BoundStatement s = preparedStatement.bind(fields);
-            s.setDefaultTimestamp(timestamp);
-            ResultSetFuture result = session.executeAsync(s);
+            BoundStatement s = preparedStatement.bind(fields).setQueryTimestamp(timestamp);
+            CompletionStage<AsyncResultSet> result = session.executeAsync(s);
             updatesSent++;
             if (result != null) {
                 // add callback to detect errors
-                Futures.addCallback(result, callback);
+                result.whenComplete(callback);
             }
         }
         updatesCount.set(updatesSent);

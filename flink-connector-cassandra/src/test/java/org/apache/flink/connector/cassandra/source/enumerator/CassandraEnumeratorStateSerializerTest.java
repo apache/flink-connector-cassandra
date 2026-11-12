@@ -20,11 +20,11 @@ package org.apache.flink.connector.cassandra.source.enumerator;
 
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 
-import com.google.common.collect.ImmutableList;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.Queue;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,7 +36,7 @@ class CassandraEnumeratorStateSerializerTest {
     public void testSerdeRoundtrip() throws Exception {
         final Queue<CassandraSplit> splitsToReassign =
                 new ArrayDeque<>(
-                        ImmutableList.of(
+                        Arrays.asList(
                                 new CassandraSplit(BigInteger.ZERO, BigInteger.TEN),
                                 new CassandraSplit(BigInteger.TEN, BigInteger.ZERO)));
 

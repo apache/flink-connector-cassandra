@@ -18,24 +18,47 @@
 
 package org.apache.flink.connector.cassandra.source.utils;
 
-import com.datastax.driver.core.ColumnMetadata;
-import com.datastax.driver.core.Metadata;
+import com.datastax.oss.driver.api.core.metadata.Metadata;
+import com.datastax.oss.driver.api.core.metadata.schema.TableMetadata;
 
-import java.util.Set;
+import java.util.List;
 import java.util.stream.Collectors;
 
 /** Common utilities for Cassandra related tasks. */
 public class CassandraUtils {
 
+    /**
+     * Returns the partition key columns formatted to be used in a CQL query, in the order of the
+     * partition key. The names of the case-sensitive columns are double-quoted.
+     */
     public static String getPartitionKeyString(
             String keyspace, String table, Metadata clusterMetadata) {
-        return String.join(",", getPartitionKey(keyspace, table, clusterMetadata));
+        return getTable(keyspace, table, clusterMetadata).getPartitionKey().stream()
+                .map(column -> column.getName().asCql(true))
+                .collect(Collectors.joining(","));
     }
 
-    public static Set<String> getPartitionKey(
+    /** Returns the names of the partition key columns, in the order of the partition key. */
+    public static List<String> getPartitionKey(
             String keyspace, String table, Metadata clusterMetadata) {
-        return clusterMetadata.getKeyspace(keyspace).getTable(table).getPartitionKey().stream()
-                .map(ColumnMetadata::getName)
-                .collect(Collectors.toSet());
+        return getTable(keyspace, table, clusterMetadata).getPartitionKey().stream()
+                .map(column -> column.getName().asInternal())
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Returns the metadata of a table.
+     *
+     * @throws IllegalArgumentException if the keyspace or the table does not exist
+     */
+    public static TableMetadata getTable(String keyspace, String table, Metadata clusterMetadata) {
+        return clusterMetadata
+                .getKeyspace(keyspace)
+                .flatMap(keyspaceMetadata -> keyspaceMetadata.getTable(table))
+                .orElseThrow(
+                        () ->
+                                new IllegalArgumentException(
+                                        String.format(
+                                                "Table %s.%s does not exist.", keyspace, table)));
     }
 }

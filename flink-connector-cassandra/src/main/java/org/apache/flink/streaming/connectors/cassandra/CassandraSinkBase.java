@@ -28,25 +28,24 @@ import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
 import org.apache.flink.util.Preconditions;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.Session;
-import com.google.common.util.concurrent.FutureCallback;
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
+import com.datastax.oss.driver.api.core.CqlSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 
 /**
  * CassandraSinkBase is the common abstract class of {@link CassandraPojoSink} and {@link
  * CassandraTupleSink}.
  *
  * <p>In case of experiencing the following error: {@code Error while sending value.
- * com.datastax.driver.core.exceptions.WriteTimeoutException: Cassandra timeout during write query
- * at consistency LOCAL_ONE (1 replica were required but only 0 acknowledged the write)},
+ * com.datastax.oss.driver.api.core.servererrors.WriteTimeoutException: Cassandra timeout during
+ * SIMPLE write query at consistency LOCAL_ONE (1 replica were required but only 0 acknowledged the
+ * write)},
  *
  * <p>it is recommended to increase the Cassandra write timeout to adapt to your workload in your
  * Cassandra cluster so that such timeout errors do not happen. For that you need to raise
@@ -63,20 +62,19 @@ public abstract class CassandraSinkBase<IN, V> extends RichSinkFunction<IN>
         implements CheckpointedFunction {
     protected final Logger log = LoggerFactory.getLogger(getClass());
 
-    protected transient Cluster cluster;
-    protected transient Session session;
+    protected transient CqlSession session;
 
     private AtomicReference<Throwable> throwable;
-    private FutureCallback<V> callback;
+    private BiConsumer<V, Throwable> callback;
     private Semaphore semaphore;
 
-    private final ClusterBuilder builder;
+    private final CassandraSessionBuilder builder;
     private final CassandraSinkBaseConfig config;
 
     private final CassandraFailureHandler failureHandler;
 
     CassandraSinkBase(
-            ClusterBuilder builder,
+            CassandraSessionBuilder builder,
             CassandraSinkBaseConfig config,
             CassandraFailureHandler failureHandler) {
         this.builder = builder;
@@ -88,20 +86,13 @@ public abstract class CassandraSinkBase<IN, V> extends RichSinkFunction<IN>
     @Override
     public void open(Configuration configuration) {
         this.callback =
-                new FutureCallback<V>() {
-                    @Override
-                    public void onSuccess(V ignored) {
-                        semaphore.release();
-                    }
-
-                    @Override
-                    public void onFailure(Throwable t) {
+                (ignored, t) -> {
+                    if (t != null) {
                         throwable.compareAndSet(null, t);
                         log.error("Error while sending value.", t);
-                        semaphore.release();
                     }
+                    semaphore.release();
                 };
-        this.cluster = builder.getCluster();
         this.session = createSession();
 
         throwable = new AtomicReference<>();
@@ -122,13 +113,6 @@ public abstract class CassandraSinkBase<IN, V> extends RichSinkFunction<IN>
             } catch (Exception e) {
                 log.error("Error while closing session.", e);
             }
-            try {
-                if (cluster != null) {
-                    cluster.close();
-                }
-            } catch (Exception e) {
-                log.error("Error while closing cluster.", e);
-            }
         }
     }
 
@@ -146,21 +130,21 @@ public abstract class CassandraSinkBase<IN, V> extends RichSinkFunction<IN>
     public void invoke(IN value) throws Exception {
         checkAsyncErrors();
         tryAcquire(1);
-        final ListenableFuture<V> result;
+        final CompletionStage<V> result;
         try {
             result = send(value);
         } catch (Throwable e) {
             semaphore.release();
             throw e;
         }
-        Futures.addCallback(result, callback);
+        result.whenComplete(callback);
     }
 
-    protected Session createSession() {
-        return cluster.connect();
+    protected CqlSession createSession() {
+        return builder.getSession();
     }
 
-    public abstract ListenableFuture<V> send(IN value);
+    public abstract CompletionStage<V> send(IN value);
 
     private void tryAcquire(int permits) throws InterruptedException, TimeoutException {
         SinkUtils.tryAcquire(

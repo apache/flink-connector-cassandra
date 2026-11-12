@@ -20,30 +20,19 @@ package org.apache.flink.connector.cassandra.source.reader;
 
 import org.apache.flink.annotation.Internal;
 
-import com.datastax.driver.core.ExecutionInfo;
-import com.datastax.driver.core.Row;
+import com.datastax.oss.driver.api.core.cql.Row;
 
-/**
- * Wrapper for Cassandra {@link Row} that stores {@link ExecutionInfo} Cassandra statistics about
- * the query execution that produced this row. {@link ExecutionInfo} is useful for using the
- * Cassandra mapper during row translation to pojo.
- */
+/** Wrapper for Cassandra {@link Row}. */
 @Internal
 public class CassandraRow {
 
     private final Row row;
-    private final ExecutionInfo executionInfo;
 
-    public CassandraRow(Row row, ExecutionInfo executionInfo) {
+    public CassandraRow(Row row) {
         this.row = row;
-        this.executionInfo = executionInfo;
     }
 
     public Row getRow() {
         return row;
-    }
-
-    public ExecutionInfo getExecutionInfo() {
-        return executionInfo;
     }
 }

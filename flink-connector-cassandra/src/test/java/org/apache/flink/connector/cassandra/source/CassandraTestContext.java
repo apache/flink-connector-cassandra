@@ -21,16 +21,16 @@ package org.apache.flink.connector.cassandra.source;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.source.Source;
 import org.apache.flink.connector.cassandra.CassandraTestEnvironment;
+import org.apache.flink.connector.cassandra.mapper.PojoMapper;
 import org.apache.flink.connector.testframe.external.ExternalContextFactory;
 import org.apache.flink.connector.testframe.external.ExternalSystemSplitDataWriter;
 import org.apache.flink.connector.testframe.external.source.DataStreamSourceExternalContext;
 import org.apache.flink.connector.testframe.external.source.TestingSourceSettings;
 import org.apache.flink.connectors.cassandra.utils.Pojo;
-import org.apache.flink.streaming.connectors.cassandra.MapperOptions;
+import org.apache.flink.streaming.connectors.cassandra.CassandraMapperOptions;
 
-import com.datastax.driver.core.ConsistencyLevel;
-import com.datastax.driver.mapping.Mapper;
-import com.datastax.driver.mapping.MappingManager;
+import com.datastax.oss.driver.api.core.DefaultConsistencyLevel;
+import com.datastax.oss.driver.api.core.cql.PreparedStatement;
 
 import java.net.URL;
 import java.util.ArrayList;
@@ -58,20 +58,23 @@ public class CassandraTestContext implements DataStreamSourceExternalContext<Poj
 
     private static final int RECORDS_PER_SPLIT = 20;
 
-    private final Mapper<Pojo> mapper;
-    private final MapperOptions mapperOptions;
+    private final PojoMapper<Pojo> mapper;
+    private final PreparedStatement insertStatement;
+    private final CassandraMapperOptions mapperOptions;
     private final CassandraTestEnvironment cassandraTestEnvironment;
 
     public CassandraTestContext(CassandraTestEnvironment cassandraTestEnvironment) {
         this.cassandraTestEnvironment = cassandraTestEnvironment;
         createTable();
-        mapper = new MappingManager(cassandraTestEnvironment.getSession()).mapper(Pojo.class);
+        mapper = PojoMapper.create(Pojo.class);
         mapperOptions =
-                () ->
-                        new Mapper.Option[] {
-                            Mapper.Option.saveNullFields(true),
-                            Mapper.Option.consistencyLevel(ConsistencyLevel.ONE)
-                        };
+                new CassandraMapperOptions()
+                        .saveNullFields(true)
+                        .consistencyLevel(DefaultConsistencyLevel.ONE);
+        insertStatement =
+                cassandraTestEnvironment
+                        .getSession()
+                        .prepare(mapper.buildInsert(null, mapperOptions));
     }
 
     @Override
@@ -104,13 +107,15 @@ public class CassandraTestContext implements DataStreamSourceExternalContext<Poj
             @Override
             public void writeRecords(List<Pojo> records) {
                 for (Pojo pojo : records) {
-                    mapper.save(pojo, mapperOptions.getMapperOptions());
+                    cassandraTestEnvironment
+                            .getSession()
+                            .execute(mapper.bind(insertStatement, pojo, mapperOptions));
                 }
             }
 
             @Override
             public void close() {
-                // nothing to do, cluster/session is shared at the CassandraTestEnvironment
+                // nothing to do, the session is shared at the CassandraTestEnvironment
                 // level
             }
         };
@@ -133,7 +138,7 @@ public class CassandraTestContext implements DataStreamSourceExternalContext<Poj
     @Override
     public void close() throws Exception {
         dropTable();
-        // NB: cluster/session is shared at the CassandraTestEnvironment level
+        // NB: the session is shared at the CassandraTestEnvironment level
     }
 
     private void createTable() {

@@ -27,14 +27,13 @@ import org.apache.flink.api.java.typeutils.PojoTypeInfo;
 import org.apache.flink.api.java.typeutils.RowTypeInfo;
 import org.apache.flink.api.java.typeutils.TupleTypeInfo;
 import org.apache.flink.api.scala.typeutils.CaseClassTypeInfo;
+import org.apache.flink.connector.cassandra.session.DefaultCassandraSessionBuilder;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSink;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.transformations.LegacySinkTransformation;
 import org.apache.flink.streaming.runtime.operators.CheckpointCommitter;
 import org.apache.flink.types.Row;
-
-import com.datastax.driver.core.Cluster;
 
 import java.time.Duration;
 
@@ -265,9 +264,12 @@ public class CassandraSink<IN> {
         protected final TypeSerializer<IN> serializer;
         protected final TypeInformation<IN> typeInfo;
         protected final CassandraSinkBaseConfig.Builder configBuilder;
-        protected ClusterBuilder builder;
+        protected CassandraSessionBuilder builder;
+        private String host;
+        private int port;
+        private String localDatacenter;
         protected String keyspace;
-        protected MapperOptions mapperOptions;
+        protected CassandraMapperOptions mapperOptions;
         protected String query;
         protected CheckpointCommitter committer;
         protected boolean isWriteAheadLogEnabled;
@@ -321,31 +323,42 @@ public class CassandraSink<IN> {
          * @return this builder
          */
         public CassandraSinkBuilder<IN> setHost(final String host, final int port) {
-            if (this.builder != null) {
+            if (this.builder != null || this.host != null) {
                 throw new IllegalArgumentException(
-                        "Builder was already set. You must use either setHost() or setClusterBuilder().");
+                        "Builder was already set. You must use either setHost() or setSessionBuilder().");
             }
-            this.builder =
-                    new ClusterBuilder() {
-                        @Override
-                        protected Cluster buildCluster(Cluster.Builder builder) {
-                            return builder.addContactPoint(host).withPort(port).build();
-                        }
-                    };
+            this.host = host;
+            this.port = port;
             return this;
         }
 
         /**
-         * Sets the ClusterBuilder for this sink. A ClusterBuilder is used to configure the
-         * connection to cassandra.
+         * Sets the local datacenter of the host set with {@link #setHost(String, int)}. The driver
+         * only sends requests to the nodes of the local datacenter. When it is not set, the local
+         * datacenter is inferred from the host.
          *
-         * @param builder ClusterBuilder to configure the connection to cassandra
+         * <p>This call has no effect if {@link #setSessionBuilder(CassandraSessionBuilder)} is
+         * used.
+         *
+         * @param localDatacenter name of the datacenter of the host
          * @return this builder
          */
-        public CassandraSinkBuilder<IN> setClusterBuilder(ClusterBuilder builder) {
-            if (this.builder != null) {
+        public CassandraSinkBuilder<IN> setLocalDatacenter(String localDatacenter) {
+            this.localDatacenter = localDatacenter;
+            return this;
+        }
+
+        /**
+         * Sets the CassandraSessionBuilder for this sink. A CassandraSessionBuilder is used to
+         * configure the connection to cassandra.
+         *
+         * @param builder CassandraSessionBuilder to configure the connection to cassandra
+         * @return this builder
+         */
+        public CassandraSinkBuilder<IN> setSessionBuilder(CassandraSessionBuilder builder) {
+            if (this.builder != null || this.host != null) {
                 throw new IllegalArgumentException(
-                        "Builder was already set. You must use either setHost() or setClusterBuilder().");
+                        "Builder was already set. You must use either setHost() or setSessionBuilder().");
             }
             this.builder = builder;
             return this;
@@ -378,17 +391,16 @@ public class CassandraSink<IN> {
         }
 
         /**
-         * Sets the mapper options for this sink. The mapper options are used to configure the
-         * DataStax {@link com.datastax.driver.mapping.Mapper} when writing POJOs.
+         * Sets the mapper options for this sink. The mapper options are used to configure how POJOs
+         * are written.
          *
          * <p>This call has no effect if the input {@link DataStream} for this sink does not contain
          * POJOs.
          *
-         * @param options MapperOptions, that return an array of options that are used to configure
-         *     the DataStax mapper.
+         * @param options CassandraMapperOptions used to configure the writes of the POJOs.
          * @return this builder
          */
-        public CassandraSinkBuilder<IN> setMapperOptions(MapperOptions options) {
+        public CassandraSinkBuilder<IN> setMapperOptions(CassandraMapperOptions options) {
             this.mapperOptions = options;
             return this;
         }
@@ -457,6 +469,14 @@ public class CassandraSink<IN> {
          * @throws Exception
          */
         public CassandraSink<IN> build() throws Exception {
+            if (builder == null && host != null) {
+                builder =
+                        DefaultCassandraSessionBuilder.builder()
+                                .setHosts(host)
+                                .setPort(port)
+                                .setLocalDatacenter(localDatacenter)
+                                .build();
+            }
             sanityCheck();
             if (failureHandler == null) {
                 failureHandler = new NoOpCassandraFailureHandler();
@@ -471,7 +491,7 @@ public class CassandraSink<IN> {
         protected void sanityCheck() {
             if (builder == null) {
                 throw new IllegalArgumentException(
-                        "Cassandra host information must be supplied using either setHost() or setClusterBuilder().");
+                        "Cassandra host information must be supplied using either setHost() or setSessionBuilder().");
             }
         }
     }

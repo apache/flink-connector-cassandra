@@ -19,12 +19,12 @@ package org.apache.flink.batch.connectors.cassandra;
 
 import org.apache.flink.api.java.tuple.Tuple;
 import org.apache.flink.core.io.InputSplit;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.Row;
+import com.datastax.oss.driver.api.core.cql.Row;
 
 import java.io.IOException;
+import java.util.Iterator;
 
 /**
  * InputFormat to read data from Apache Cassandra and generate ${@link Tuple}.
@@ -34,9 +34,9 @@ import java.io.IOException;
 public class CassandraInputFormat<OUT extends Tuple> extends CassandraInputFormatBase<OUT> {
 
     private static final long serialVersionUID = 3642323148032444264L;
-    private transient ResultSet resultSet;
+    private transient Iterator<Row> rows;
 
-    public CassandraInputFormat(String query, ClusterBuilder builder) {
+    public CassandraInputFormat(String query, CassandraSessionBuilder builder) {
         super(query, builder);
     }
 
@@ -48,18 +48,18 @@ public class CassandraInputFormat<OUT extends Tuple> extends CassandraInputForma
      */
     @Override
     public void open(InputSplit ignored) throws IOException {
-        this.session = cluster.connect();
-        this.resultSet = session.execute(query);
+        this.session = builder.getSession();
+        this.rows = session.execute(query).iterator();
     }
 
     @Override
     public boolean reachedEnd() throws IOException {
-        return resultSet.isExhausted();
+        return !rows.hasNext();
     }
 
     @Override
     public OUT nextRecord(OUT reuse) throws IOException {
-        final Row item = resultSet.one();
+        final Row item = rows.next();
         for (int i = 0; i < reuse.getArity(); i++) {
             reuse.setField(item.getObject(i), i);
         }

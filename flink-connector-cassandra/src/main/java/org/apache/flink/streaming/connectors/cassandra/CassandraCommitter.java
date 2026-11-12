@@ -22,9 +22,8 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.java.ClosureCleaner;
 import org.apache.flink.streaming.runtime.operators.CheckpointCommitter;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.Row;
-import com.datastax.driver.core.Session;
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.cql.Row;
 
 import java.util.HashMap;
 import java.util.Iterator;
@@ -40,9 +39,8 @@ public class CassandraCommitter extends CheckpointCommitter {
 
     private static final long serialVersionUID = 1L;
 
-    private final ClusterBuilder builder;
-    private transient Cluster cluster;
-    private transient Session session;
+    private final CassandraSessionBuilder builder;
+    private transient CqlSession session;
 
     private String keySpace = "flink_auxiliary";
     private String table = "checkpoints_";
@@ -53,12 +51,12 @@ public class CassandraCommitter extends CheckpointCommitter {
      */
     private final Map<Integer, Long> lastCommittedCheckpoints = new HashMap<>();
 
-    public CassandraCommitter(ClusterBuilder builder) {
+    public CassandraCommitter(CassandraSessionBuilder builder) {
         this.builder = builder;
         ClosureCleaner.clean(builder, ExecutionConfig.ClosureCleanerLevel.RECURSIVE, true);
     }
 
-    public CassandraCommitter(ClusterBuilder builder, String keySpace) {
+    public CassandraCommitter(CassandraSessionBuilder builder, String keySpace) {
         this(builder);
         this.keySpace = keySpace;
     }
@@ -76,8 +74,7 @@ public class CassandraCommitter extends CheckpointCommitter {
      */
     @Override
     public void createResource() throws Exception {
-        cluster = builder.getCluster();
-        session = cluster.connect();
+        session = builder.getSession();
 
         session.execute(
                 String.format(
@@ -93,20 +90,14 @@ public class CassandraCommitter extends CheckpointCommitter {
         } catch (Exception e) {
             LOG.error("Error while closing session.", e);
         }
-        try {
-            cluster.close();
-        } catch (Exception e) {
-            LOG.error("Error while closing cluster.", e);
-        }
     }
 
     @Override
     public void open() throws Exception {
         if (builder == null) {
-            throw new RuntimeException("No ClusterBuilder was set.");
+            throw new RuntimeException("No CassandraSessionBuilder was set.");
         }
-        cluster = builder.getCluster();
-        session = cluster.connect();
+        session = builder.getSession();
     }
 
     @Override
@@ -116,11 +107,6 @@ public class CassandraCommitter extends CheckpointCommitter {
             session.close();
         } catch (Exception e) {
             LOG.error("Error while closing session.", e);
-        }
-        try {
-            cluster.close();
-        } catch (Exception e) {
-            LOG.error("Error while closing cluster.", e);
         }
     }
 

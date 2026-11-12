@@ -17,18 +17,19 @@
 
 package org.apache.flink.streaming.connectors.cassandra.example;
 
-import com.datastax.driver.mapping.annotations.Column;
-import com.datastax.driver.mapping.annotations.Table;
+import com.datastax.oss.driver.api.mapper.annotations.CqlName;
+import com.datastax.oss.driver.api.mapper.annotations.Entity;
 
 import java.io.Serializable;
 
-/** Pojo with DataStax annotations.. */
-@Table(keyspace = "test", name = "message")
+/** Pojo with Cassandra Java driver mapper annotations.. */
+@Entity(defaultKeyspace = "test")
+@CqlName("message")
 public class Message implements Serializable {
 
     private static final long serialVersionUID = 1123119384361005680L;
 
-    @Column(name = "body")
+    @CqlName("body")
     private String message;
 
     public Message() {

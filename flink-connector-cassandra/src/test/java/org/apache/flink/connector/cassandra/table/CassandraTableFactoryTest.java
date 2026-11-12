@@ -19,9 +19,11 @@
 package org.apache.flink.connector.cassandra.table;
 
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
+import org.apache.flink.connector.cassandra.session.DefaultCassandraSessionBuilder;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.Schema;
+import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.catalog.CatalogTable;
 import org.apache.flink.table.catalog.Column;
 import org.apache.flink.table.catalog.ObjectIdentifier;
@@ -32,9 +34,11 @@ import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.connector.source.ScanTableSource;
 import org.apache.flink.table.factories.DynamicTableFactory;
 
-import com.datastax.driver.core.Cluster;
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.CqlSessionBuilder;
 import org.junit.jupiter.api.Test;
 
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -74,6 +78,8 @@ class CassandraTableFactoryTest {
                         CassandraConnectorOptions.KEYSPACE,
                         CassandraConnectorOptions.TABLE,
                         CassandraConnectorOptions.PORT,
+                        CassandraConnectorOptions.LOCAL_DATACENTER,
+                        CassandraConnectorOptions.SECURE_CONNECT_BUNDLE,
                         CassandraConnectorOptions.USERNAME,
                         CassandraConnectorOptions.PASSWORD,
                         CassandraConnectorOptions.CONSISTENCY_LEVEL,
@@ -81,7 +87,7 @@ class CassandraTableFactoryTest {
                         CassandraConnectorOptions.READ_TIMEOUT,
                         CassandraConnectorOptions.QUERY,
                         CassandraConnectorOptions.MAX_SPLIT_MEMORY_SIZE,
-                        CassandraConnectorOptions.CLUSTER_BUILDER_CLASS);
+                        CassandraConnectorOptions.SESSION_BUILDER_CLASS);
     }
 
     @Test
@@ -117,7 +123,8 @@ class CassandraTableFactoryTest {
         assertThat(cassandraSource.getKeyspace()).isEqualTo("test_keyspace");
         assertThat(cassandraSource.getTable()).isEqualTo("test_table");
         assertThat(cassandraSource.getMaxSplitMemorySize()).isEqualTo(134217728L);
-        assertThat(cassandraSource.getClusterBuilder()).isInstanceOf(CassandraClusterBuilder.class);
+        assertThat(cassandraSource.getSessionBuilder())
+                .isInstanceOf(DefaultCassandraSessionBuilder.class);
     }
 
     @Test
@@ -141,7 +148,8 @@ class CassandraTableFactoryTest {
         assertThat(cassandraSource.getQuery())
                 .isEqualTo("SELECT * FROM test_keyspace.test_table WHERE id > 100");
         assertThat(cassandraSource.getMaxSplitMemorySize()).isEqualTo(268435456L);
-        assertThat(cassandraSource.getClusterBuilder()).isInstanceOf(CassandraClusterBuilder.class);
+        assertThat(cassandraSource.getSessionBuilder())
+                .isInstanceOf(DefaultCassandraSessionBuilder.class);
 
         // Verify the source can be copied
         DynamicTableSource copiedSource = cassandraSource.copy();
@@ -151,11 +159,11 @@ class CassandraTableFactoryTest {
     }
 
     @Test
-    void testValidConfigurationWithCustomClusterBuilder() {
+    void testValidConfigurationWithCustomSessionBuilder() {
         Map<String, String> options = new HashMap<>();
         options.put(
-                "cluster-builder-class",
-                "org.apache.flink.connector.cassandra.table.CassandraTableFactoryTest$TestClusterBuilder");
+                "session-builder-class",
+                "org.apache.flink.connector.cassandra.table.CassandraTableFactoryTest$TestSessionBuilder");
         options.put("keyspace", "test_keyspace");
         options.put("table", "test_table");
         options.put("max-split-memory-size", "33554432"); // 32MB in bytes
@@ -164,7 +172,7 @@ class CassandraTableFactoryTest {
         assertThat(source).isNotNull();
         assertThat(source).isInstanceOf(CassandraDynamicTableSource.class);
 
-        // Verify the source was created with the custom cluster builder
+        // Verify the source was created with the custom session builder
         CassandraDynamicTableSource cassandraSource = (CassandraDynamicTableSource) source;
         assertThat(cassandraSource.asSummaryString()).isEqualTo("Cassandra");
 
@@ -172,7 +180,7 @@ class CassandraTableFactoryTest {
         assertThat(cassandraSource.getKeyspace()).isEqualTo("test_keyspace");
         assertThat(cassandraSource.getTable()).isEqualTo("test_table");
         assertThat(cassandraSource.getMaxSplitMemorySize()).isEqualTo(33554432L);
-        assertThat(cassandraSource.getClusterBuilder()).isInstanceOf(TestClusterBuilder.class);
+        assertThat(cassandraSource.getSessionBuilder()).isInstanceOf(TestSessionBuilder.class);
 
         // Verify it's scan table source and insert-only
         assertThat(cassandraSource).isInstanceOf(ScanTableSource.class);
@@ -199,7 +207,8 @@ class CassandraTableFactoryTest {
         // Verify the actual option values
         assertThat(cassandraSource.getKeyspace()).isEqualTo("test_keyspace");
         assertThat(cassandraSource.getTable()).isEqualTo("test_table");
-        assertThat(cassandraSource.getClusterBuilder()).isInstanceOf(CassandraClusterBuilder.class);
+        assertThat(cassandraSource.getSessionBuilder())
+                .isInstanceOf(DefaultCassandraSessionBuilder.class);
         assertThat(cassandraSource.getChangelogMode()).isEqualTo(ChangelogMode.insertOnly());
     }
 
@@ -220,7 +229,8 @@ class CassandraTableFactoryTest {
         options.put("password", "testpass");
         assertThatThrownBy(() -> createTableSource(options))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("'hosts' is required when using default ClusterBuilder");
+                .hasMessageContaining(
+                        "'hosts' or 'secure-connect-bundle' is required when using default CassandraSessionBuilder");
     }
 
     @Test
@@ -233,7 +243,7 @@ class CassandraTableFactoryTest {
         assertThatThrownBy(() -> createTableSource(options))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining(
-                        "Username is required when using default CassandraClusterBuilder");
+                        "Username is required when using default CassandraSessionBuilder");
     }
 
     @Test
@@ -246,7 +256,7 @@ class CassandraTableFactoryTest {
         assertThatThrownBy(() -> createTableSource(options))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining(
-                        "Password is required when using default CassandraClusterBuilder");
+                        "Password is required when using default CassandraSessionBuilder");
     }
 
     @Test
@@ -259,6 +269,84 @@ class CassandraTableFactoryTest {
         assertThatThrownBy(() -> createTableSource(options))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Must provide either 'query' OR both 'keyspace' and 'table'");
+    }
+
+    @Test
+    void testLocalDatacenterAndDriverOptions() {
+        Map<String, String> options = new HashMap<>();
+        options.put("hosts", "localhost:9042");
+        options.put("username", "cassandra");
+        options.put("password", "cassandra");
+        options.put("keyspace", "test_keyspace");
+        options.put("table", "test_table");
+        options.put("local-datacenter", "dc1");
+        options.put("driver.basic.request.page-size", "1000");
+        options.put("driver.advanced.request-id.generator.class", "UuidRequestIdGenerator");
+
+        CassandraDynamicTableSource cassandraSource =
+                (CassandraDynamicTableSource) createTableSource(options);
+
+        Map<String, String> driverOptions = new HashMap<>();
+        driverOptions.put("basic.request.page-size", "1000");
+        driverOptions.put("advanced.request-id.generator.class", "UuidRequestIdGenerator");
+        assertThat(cassandraSource.getSessionBuilder())
+                .isEqualTo(
+                        DefaultCassandraSessionBuilder.builder()
+                                .setHosts("localhost:9042")
+                                .setPort(CassandraConnectorOptions.PORT.defaultValue())
+                                .setLocalDatacenter("dc1")
+                                .setCredentials("cassandra", "cassandra")
+                                .setConsistencyLevel(
+                                        CassandraConnectorOptions.CONSISTENCY_LEVEL.defaultValue())
+                                .setConnectTimeoutMs(
+                                        CassandraConnectorOptions.CONNECT_TIMEOUT.defaultValue())
+                                .setRequestTimeoutMs(
+                                        CassandraConnectorOptions.READ_TIMEOUT.defaultValue())
+                                .setDriverOptions(driverOptions)
+                                .build());
+    }
+
+    @Test
+    void testSecureConnectBundleWithoutHosts() {
+        Map<String, String> options = new HashMap<>();
+        options.put("secure-connect-bundle", "/path/to/secure-connect-database.zip");
+        options.put("username", "token");
+        options.put("password", "secret");
+        options.put("keyspace", "test_keyspace");
+        options.put("table", "test_table");
+
+        CassandraDynamicTableSource cassandraSource =
+                (CassandraDynamicTableSource) createTableSource(options);
+
+        assertThat(cassandraSource.getSessionBuilder())
+                .isEqualTo(
+                        DefaultCassandraSessionBuilder.builder()
+                                .setHosts(null)
+                                .setPort(CassandraConnectorOptions.PORT.defaultValue())
+                                .setSecureConnectBundle("/path/to/secure-connect-database.zip")
+                                .setCredentials("token", "secret")
+                                .setConsistencyLevel(
+                                        CassandraConnectorOptions.CONSISTENCY_LEVEL.defaultValue())
+                                .setConnectTimeoutMs(
+                                        CassandraConnectorOptions.CONNECT_TIMEOUT.defaultValue())
+                                .setRequestTimeoutMs(
+                                        CassandraConnectorOptions.READ_TIMEOUT.defaultValue())
+                                .build());
+    }
+
+    @Test
+    void testUnsupportedOptionIsRejected() {
+        Map<String, String> options = new HashMap<>();
+        options.put("hosts", "localhost:9042");
+        options.put("username", "cassandra");
+        options.put("password", "cassandra");
+        options.put("keyspace", "test_keyspace");
+        options.put("table", "test_table");
+        options.put("unknown-option", "value");
+
+        assertThatThrownBy(() -> createTableSource(options))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("unknown-option");
     }
 
     private DynamicTableSource createTableSource(Map<String, String> options) {
@@ -302,13 +390,18 @@ class CassandraTableFactoryTest {
         return factory.createDynamicTableSource(context);
     }
 
-    /** Test implementation of ClusterBuilder for testing custom ClusterBuilder scenarios. */
-    public static class TestClusterBuilder extends ClusterBuilder {
-        public TestClusterBuilder() {}
+    /**
+     * Test implementation of CassandraSessionBuilder for testing custom CassandraSessionBuilder
+     * scenarios.
+     */
+    public static class TestSessionBuilder extends CassandraSessionBuilder {
+        public TestSessionBuilder() {}
 
         @Override
-        protected Cluster buildCluster(Cluster.Builder builder) {
-            return builder.addContactPoint("localhost").withPort(9042).build();
+        protected CqlSession buildSession(CqlSessionBuilder builder) {
+            return builder.addContactPoint(new InetSocketAddress("localhost", 9042))
+                    .withLocalDatacenter("datacenter1")
+                    .build();
         }
     }
 }
