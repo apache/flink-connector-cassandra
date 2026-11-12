@@ -17,7 +17,7 @@
 
 package org.apache.flink.batch.connectors.cassandra;
 
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 import org.apache.flink.types.Row;
 
 import java.time.Duration;
@@ -28,13 +28,13 @@ import java.time.Duration;
  */
 public class CassandraRowOutputFormat extends CassandraColumnarOutputFormatBase<Row> {
 
-    public CassandraRowOutputFormat(String insertQuery, ClusterBuilder builder) {
+    public CassandraRowOutputFormat(String insertQuery, CassandraSessionBuilder builder) {
         this(insertQuery, builder, Integer.MAX_VALUE, Duration.ofMillis(Long.MAX_VALUE));
     }
 
     public CassandraRowOutputFormat(
             String insertQuery,
-            ClusterBuilder builder,
+            CassandraSessionBuilder builder,
             int maxConcurrentRequests,
             Duration maxConcurrentRequestsTimeout) {
         super(insertQuery, builder, maxConcurrentRequests, maxConcurrentRequestsTimeout);

@@ -24,9 +24,9 @@ import org.apache.flink.table.data.GenericArrayData;
 import org.apache.flink.table.data.GenericMapData;
 import org.apache.flink.table.data.GenericRowData;
 
-import com.datastax.driver.core.Row;
-import com.datastax.driver.core.TupleValue;
-import com.datastax.driver.core.UDTValue;
+import com.datastax.oss.driver.api.core.cql.Row;
+import com.datastax.oss.driver.api.core.data.TupleValue;
+import com.datastax.oss.driver.api.core.data.UdtValue;
 
 import java.util.HashMap;
 import java.util.List;
@@ -182,8 +182,8 @@ public final class CollectionFieldMappers {
 
             GenericRowData rowData = new GenericRowData(fieldCount);
 
-            if (value instanceof UDTValue) {
-                UDTValue udtValue = (UDTValue) value;
+            if (value instanceof UdtValue) {
+                UdtValue udtValue = (UdtValue) value;
                 for (int i = 0; i < fieldCount; i++) {
                     String nestedFieldName = fieldNames[i];
                     Object fieldValue = null;
@@ -207,7 +207,7 @@ public final class CollectionFieldMappers {
                 }
             } else {
                 throw new ValidationException(
-                        "Expected UDTValue or TupleValue, got: " + value.getClass());
+                        "Expected UdtValue or TupleValue, got: " + value.getClass());
             }
 
             return rowData;

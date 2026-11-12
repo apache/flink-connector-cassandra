@@ -32,11 +32,11 @@ import org.apache.flink.configuration.ConfigOptions;
  * <p><strong>Connection Configuration (mutually exclusive groups):</strong>
  *
  * <ul>
- *   <li><strong>Priority 1:</strong> {@link #CLUSTER_BUILDER_CLASS} - if provided, uses custom
- *       ClusterBuilder and ignores {@link #HOSTS}, {@link #PORT}, {@link #USERNAME}, {@link
- *       #PASSWORD}
+ *   <li><strong>Priority 1:</strong> {@link #SESSION_BUILDER_CLASS} - if provided, uses custom
+ *       CassandraSessionBuilder and ignores {@link #HOSTS}, {@link #PORT}, {@link #USERNAME},
+ *       {@link #PASSWORD}
  *   <li><strong>Priority 2:</strong> {@link #HOSTS}, {@link #PORT}, {@link #USERNAME}, {@link
- *       #PASSWORD} - if no cluster-builder-class, uses default CassandraClusterBuilder
+ *       #PASSWORD} - if no session-builder-class, uses default CassandraSessionBuilder
  * </ul>
  *
  * <p><strong>Query Configuration (mutually exclusive groups):</strong>
@@ -60,14 +60,33 @@ public class CassandraConnectorOptions {
                     .noDefaultValue()
                     .withDescription(
                             "Cassandra hosts to connect to, comma-separated (e.g., 'localhost:9042,host2:9042'). "
-                                    + "Ignored if 'cluster-builder-class' is specified.");
+                                    + "Ignored if 'session-builder-class' is specified.");
 
     public static final ConfigOption<Integer> PORT =
             ConfigOptions.key("port")
                     .intType()
                     .defaultValue(9042)
                     .withDescription(
-                            "Cassandra port number (default: 9042). Ignored if 'cluster-builder-class' is specified.");
+                            "Cassandra port number (default: 9042). Ignored if 'session-builder-class' is specified.");
+
+    public static final ConfigOption<String> LOCAL_DATACENTER =
+            ConfigOptions.key("local-datacenter")
+                    .stringType()
+                    .noDefaultValue()
+                    .withDescription(
+                            "Name of the datacenter of the hosts, the driver only sends requests to the nodes of this datacenter. "
+                                    + "If not specified, the local datacenter is inferred from the hosts. "
+                                    + "Ignored if 'session-builder-class' is specified.");
+
+    public static final ConfigOption<String> SECURE_CONNECT_BUNDLE =
+            ConfigOptions.key("secure-connect-bundle")
+                    .stringType()
+                    .noDefaultValue()
+                    .withDescription(
+                            "Secure connect bundle of a cloud database such as DataStax Astra, as a path of the local filesystem or a URL. "
+                                    + "The bundle must be accessible from all the nodes of the Flink cluster. "
+                                    + "When it is specified, 'hosts', 'port' and 'local-datacenter' are ignored. "
+                                    + "Ignored if 'session-builder-class' is specified.");
 
     public static final ConfigOption<String> KEYSPACE =
             ConfigOptions.key("keyspace")
@@ -86,14 +105,14 @@ public class CassandraConnectorOptions {
                     .stringType()
                     .noDefaultValue()
                     .withDescription(
-                            "Cassandra username for authentication (required). Ignored if 'cluster-builder-class' is specified.");
+                            "Cassandra username for authentication (required). Ignored if 'session-builder-class' is specified.");
 
     public static final ConfigOption<String> PASSWORD =
             ConfigOptions.key("password")
                     .stringType()
                     .noDefaultValue()
                     .withDescription(
-                            "Cassandra password for authentication (required). Ignored if 'cluster-builder-class' is specified.");
+                            "Cassandra password for authentication (required). Ignored if 'session-builder-class' is specified.");
 
     public static final ConfigOption<String> CONSISTENCY_LEVEL =
             ConfigOptions.key("consistency-level")
@@ -113,7 +132,7 @@ public class CassandraConnectorOptions {
                     .longType()
                     .defaultValue(10000L)
                     .withDescription(
-                            "Time limit for waiting for a response from Cassandra after sending a query (in milliseconds).");
+                            "Time limit for a query to complete, including its retries (in milliseconds).");
 
     public static final ConfigOption<String> QUERY =
             ConfigOptions.key("query")
@@ -128,16 +147,23 @@ public class CassandraConnectorOptions {
                     .defaultValue(67108864L) // 64MB in bytes
                     .withDescription("Maximum memory size for each split (in bytes).");
 
-    public static final ConfigOption<String> CLUSTER_BUILDER_CLASS =
-            ConfigOptions.key("cluster-builder-class")
+    public static final ConfigOption<String> SESSION_BUILDER_CLASS =
+            ConfigOptions.key("session-builder-class")
                     .stringType()
                     .noDefaultValue()
                     .withDescription(
-                            "Fully qualified class name of custom ClusterBuilder implementation. "
-                                    + "Must extend org.apache.flink.streaming.connectors.cassandra.ClusterBuilder "
+                            "Fully qualified class name of custom CassandraSessionBuilder implementation. "
+                                    + "Must extend org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder "
                                     + "and have a public no-argument constructor. "
                                     + "Takes precedence over 'hosts', 'port', 'username', and 'password'. "
-                                    + "If not specified, uses default CassandraClusterBuilder with username/password authentication.");
+                                    + "If not specified, uses default CassandraSessionBuilder with username/password authentication.");
+
+    /**
+     * Prefix of the options passed as they are to the configuration of the Cassandra Java driver,
+     * for example {@code 'driver.basic.request.page-size' = '1000'}. They take precedence over the
+     * other options and are ignored if 'session-builder-class' is specified.
+     */
+    public static final String DRIVER_OPTIONS_PREFIX = "driver.";
 
     private CassandraConnectorOptions() {}
 }

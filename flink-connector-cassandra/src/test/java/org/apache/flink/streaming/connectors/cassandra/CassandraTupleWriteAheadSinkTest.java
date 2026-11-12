@@ -24,26 +24,23 @@ import org.apache.flink.api.java.typeutils.TupleTypeInfo;
 import org.apache.flink.streaming.runtime.operators.CheckpointCommitter;
 import org.apache.flink.streaming.util.OneInputStreamOperatorTestHarness;
 
-import com.datastax.driver.core.BoundStatement;
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.PreparedStatement;
-import com.datastax.driver.core.ResultSetFuture;
-import com.datastax.driver.core.Session;
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.CqlSessionBuilder;
+import com.datastax.oss.driver.api.core.cql.AsyncResultSet;
+import com.datastax.oss.driver.api.core.cql.BoundStatement;
+import com.datastax.oss.driver.api.core.cql.PreparedStatement;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.mockito.ArgumentMatchers;
-import org.mockito.invocation.InvocationOnMock;
-import org.mockito.stubbing.Answer;
 
 import java.util.Collections;
-import java.util.concurrent.Executor;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -53,58 +50,37 @@ class CassandraTupleWriteAheadSinkTest {
     @Test
     @Timeout(value = 20_000, unit = TimeUnit.MILLISECONDS)
     void testAckLoopExitOnException() throws Exception {
-        final AtomicReference<Runnable> runnableFuture = new AtomicReference<>();
+        final AtomicReference<CompletableFuture<AsyncResultSet>> pendingFuture =
+                new AtomicReference<>();
 
-        final ClusterBuilder clusterBuilder =
-                new ClusterBuilder() {
+        final CassandraSessionBuilder sessionBuilder =
+                new CassandraSessionBuilder() {
                     private static final long serialVersionUID = 4624400760492936756L;
 
                     @Override
-                    protected Cluster buildCluster(Cluster.Builder builder) {
-                        try {
-                            BoundStatement boundStatement = mock(BoundStatement.class);
-                            when(boundStatement.setDefaultTimestamp(any(long.class)))
-                                    .thenReturn(boundStatement);
+                    protected CqlSession buildSession(CqlSessionBuilder builder) {
+                        BoundStatement boundStatement = mock(BoundStatement.class);
+                        when(boundStatement.setQueryTimestamp(any(long.class)))
+                                .thenReturn(boundStatement);
 
-                            PreparedStatement preparedStatement = mock(PreparedStatement.class);
-                            when(preparedStatement.bind(ArgumentMatchers.any()))
-                                    .thenReturn(boundStatement);
+                        PreparedStatement preparedStatement = mock(PreparedStatement.class);
+                        when(preparedStatement.bind(ArgumentMatchers.any()))
+                                .thenReturn(boundStatement);
 
-                            ResultSetFuture future = mock(ResultSetFuture.class);
-                            when(future.get())
-                                    .thenThrow(new RuntimeException("Expected exception."));
-
-                            doAnswer(
-                                            new Answer<Void>() {
-                                                @Override
-                                                public Void answer(
-                                                        InvocationOnMock invocationOnMock)
-                                                        throws Throwable {
-                                                    synchronized (runnableFuture) {
-                                                        runnableFuture.set(
-                                                                (((Runnable)
-                                                                        invocationOnMock
-                                                                                .getArguments()[
-                                                                                0])));
-                                                        runnableFuture.notifyAll();
-                                                    }
-                                                    return null;
-                                                }
-                                            })
-                                    .when(future)
-                                    .addListener(any(Runnable.class), any(Executor.class));
-
-                            Session session = mock(Session.class);
-                            when(session.prepare(anyString())).thenReturn(preparedStatement);
-                            when(session.executeAsync(any(BoundStatement.class)))
-                                    .thenReturn(future);
-
-                            Cluster cluster = mock(Cluster.class);
-                            when(cluster.connect()).thenReturn(session);
-                            return cluster;
-                        } catch (Exception e) {
-                            throw new RuntimeException(e);
-                        }
+                        CqlSession session = mock(CqlSession.class);
+                        when(session.prepare(anyString())).thenReturn(preparedStatement);
+                        when(session.executeAsync(any(BoundStatement.class)))
+                                .thenAnswer(
+                                        invocationOnMock -> {
+                                            CompletableFuture<AsyncResultSet> future =
+                                                    new CompletableFuture<>();
+                                            synchronized (pendingFuture) {
+                                                pendingFuture.set(future);
+                                                pendingFuture.notifyAll();
+                                            }
+                                            return future;
+                                        });
+                        return session;
                     }
                 };
 
@@ -113,16 +89,19 @@ class CassandraTupleWriteAheadSinkTest {
                         new Runnable() {
                             @Override
                             public void run() {
-                                synchronized (runnableFuture) {
-                                    while (runnableFuture.get() == null) {
+                                synchronized (pendingFuture) {
+                                    while (pendingFuture.get() == null) {
                                         try {
-                                            runnableFuture.wait();
+                                            pendingFuture.wait();
                                         } catch (InterruptedException e) {
                                             // ignore interrupts
                                         }
                                     }
                                 }
-                                runnableFuture.get().run();
+                                pendingFuture
+                                        .get()
+                                        .completeExceptionally(
+                                                new RuntimeException("Expected exception."));
                             }
                         })
                 .start();
@@ -132,7 +111,7 @@ class CassandraTupleWriteAheadSinkTest {
                 new CassandraTupleWriteAheadSink<>(
                         "abc",
                         TupleTypeInfo.of(Tuple0.class).createSerializer(new ExecutionConfig()),
-                        clusterBuilder,
+                        sessionBuilder,
                         cc);
 
         OneInputStreamOperatorTestHarness<Tuple0, Tuple0> harness =

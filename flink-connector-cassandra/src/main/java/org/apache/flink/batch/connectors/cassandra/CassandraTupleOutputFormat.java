@@ -18,7 +18,7 @@
 package org.apache.flink.batch.connectors.cassandra;
 
 import org.apache.flink.api.java.tuple.Tuple;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 
 import java.time.Duration;
 
@@ -31,13 +31,13 @@ import java.time.Duration;
 public class CassandraTupleOutputFormat<OUT extends Tuple>
         extends CassandraColumnarOutputFormatBase<OUT> {
 
-    public CassandraTupleOutputFormat(String insertQuery, ClusterBuilder builder) {
+    public CassandraTupleOutputFormat(String insertQuery, CassandraSessionBuilder builder) {
         this(insertQuery, builder, Integer.MAX_VALUE, Duration.ofMillis(Long.MAX_VALUE));
     }
 
     public CassandraTupleOutputFormat(
             String insertQuery,
-            ClusterBuilder builder,
+            CassandraSessionBuilder builder,
             int maxConcurrentRequests,
             Duration maxConcurrentRequestsTimeout) {
         super(insertQuery, builder, maxConcurrentRequests, maxConcurrentRequestsTimeout);

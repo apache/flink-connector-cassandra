@@ -17,14 +17,15 @@
 
 package org.apache.flink.batch.connectors.cassandra;
 
+import org.apache.flink.connector.cassandra.mapper.PojoMapper;
 import org.apache.flink.core.io.InputSplit;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
-import org.apache.flink.streaming.connectors.cassandra.MapperOptions;
+import org.apache.flink.streaming.connectors.cassandra.CassandraMapperOptions;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 import org.apache.flink.util.Preconditions;
 
-import com.datastax.driver.mapping.Mapper;
-import com.datastax.driver.mapping.MappingManager;
-import com.datastax.driver.mapping.Result;
+import com.datastax.oss.driver.api.core.cql.Row;
+
+import java.util.Iterator;
 
 /**
  * InputFormat to read data from Apache Cassandra and generate a custom Cassandra annotated object.
@@ -35,47 +36,44 @@ public class CassandraPojoInputFormat<OUT> extends CassandraInputFormatBase<OUT>
 
     private static final long serialVersionUID = 1992091320180905115L;
 
-    private transient Result<OUT> resultSet;
-    private final MapperOptions mapperOptions;
+    private transient Iterator<Row> rows;
+    private transient PojoMapper<OUT> mapper;
     private final Class<OUT> inputClass;
 
-    public CassandraPojoInputFormat(String query, ClusterBuilder builder, Class<OUT> inputClass) {
+    public CassandraPojoInputFormat(
+            String query, CassandraSessionBuilder builder, Class<OUT> inputClass) {
         this(query, builder, inputClass, null);
     }
 
+    /**
+     * Creates the input format.
+     *
+     * @param mapperOptions the mapper options, they only configure writes and are not used by this
+     *     input format
+     */
     public CassandraPojoInputFormat(
             String query,
-            ClusterBuilder builder,
+            CassandraSessionBuilder builder,
             Class<OUT> inputClass,
-            MapperOptions mapperOptions) {
+            CassandraMapperOptions mapperOptions) {
         super(query, builder);
-        this.mapperOptions = mapperOptions;
         this.inputClass = Preconditions.checkNotNull(inputClass, "InputClass cannot be null");
     }
 
     @Override
     public void open(InputSplit split) {
-        this.session = cluster.connect();
-        MappingManager manager = new MappingManager(session);
-
-        Mapper<OUT> mapper = manager.mapper(inputClass);
-
-        if (mapperOptions != null) {
-            Mapper.Option[] optionsArray = mapperOptions.getMapperOptions();
-            if (optionsArray != null) {
-                mapper.setDefaultGetOptions(optionsArray);
-            }
-        }
-        this.resultSet = mapper.map(session.execute(query));
+        this.session = builder.getSession();
+        this.mapper = PojoMapper.create(inputClass);
+        this.rows = session.execute(query).iterator();
     }
 
     @Override
     public boolean reachedEnd() {
-        return resultSet.isExhausted();
+        return !rows.hasNext();
     }
 
     @Override
     public OUT nextRecord(OUT reuse) {
-        return resultSet.one();
+        return mapper.map(rows.next());
     }
 }

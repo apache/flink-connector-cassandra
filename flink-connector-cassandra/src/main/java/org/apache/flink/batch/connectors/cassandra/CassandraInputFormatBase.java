@@ -25,12 +25,10 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.io.GenericInputSplit;
 import org.apache.flink.core.io.InputSplit;
 import org.apache.flink.core.io.InputSplitAssigner;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 import org.apache.flink.util.Preconditions;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.Session;
-import com.google.common.base.Strings;
+import com.datastax.oss.driver.api.core.CqlSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,23 +44,22 @@ public abstract class CassandraInputFormatBase<OUT> extends RichInputFormat<OUT,
     protected final Logger logger = LoggerFactory.getLogger(getClass());
 
     protected final String query;
-    private final ClusterBuilder builder;
+    protected final CassandraSessionBuilder builder;
 
-    protected transient Cluster cluster;
-    protected transient Session session;
+    protected transient CqlSession session;
 
-    public CassandraInputFormatBase(String query, ClusterBuilder builder) {
-        Preconditions.checkArgument(!Strings.isNullOrEmpty(query), "Query cannot be null or empty");
+    public CassandraInputFormatBase(String query, CassandraSessionBuilder builder) {
+        Preconditions.checkArgument(
+                query != null && !query.isEmpty(), "Query cannot be null or empty");
         Preconditions.checkNotNull(builder, "Builder cannot be null");
 
         this.query = query;
         this.builder = builder;
     }
 
+    /** The connection to Cassandra is created when the format is opened. */
     @Override
-    public void configure(Configuration parameters) {
-        this.cluster = builder.getCluster();
-    }
+    public void configure(Configuration parameters) {}
 
     @Override
     public BaseStatistics getStatistics(BaseStatistics cachedStatistics) {
@@ -88,14 +85,6 @@ public abstract class CassandraInputFormatBase<OUT> extends RichInputFormat<OUT,
             }
         } catch (Exception e) {
             logger.error("Error while closing session.", e);
-        }
-
-        try {
-            if (cluster != null) {
-                cluster.close();
-            }
-        } catch (Exception e) {
-            logger.error("Error while closing cluster.", e);
         }
     }
 }

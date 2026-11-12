@@ -18,65 +18,67 @@
 package org.apache.flink.streaming.connectors.cassandra;
 
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.connector.cassandra.mapper.PojoMapper;
 
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.Session;
-import com.datastax.driver.mapping.Mapper;
-import com.datastax.driver.mapping.MappingManager;
-import com.google.common.util.concurrent.ListenableFuture;
+import com.datastax.oss.driver.api.core.cql.AsyncResultSet;
+import com.datastax.oss.driver.api.core.cql.PreparedStatement;
 
 import javax.annotation.Nullable;
 
+import java.util.concurrent.CompletionStage;
+
 /**
- * Flink Sink to save data into a Cassandra cluster using <a
- * href="http://docs.datastax.com/en/drivers/java/2.1/com/datastax/driver/mapping/Mapper.html">Mapper</a>,
- * which it uses annotations from <a
- * href="http://docs.datastax.com/en/drivers/java/2.1/com/datastax/driver/mapping/annotations/package-summary.html">
- * com.datastax.driver.mapping.annotations</a>. Please read the recommendations in {@linkplain
- * CassandraSinkBase}.
+ * Flink Sink to save POJOs into a Cassandra cluster. The POJOs are mapped with the annotations of
+ * the Cassandra Java driver mapper from the package {@code
+ * com.datastax.oss.driver.api.mapper.annotations}, the class must be annotated with {@link
+ * com.datastax.oss.driver.api.mapper.annotations.Entity}. Please read the recommendations in
+ * {@linkplain CassandraSinkBase}.
  *
  * @param <IN> Type of the elements emitted by this sink
  */
-public class CassandraPojoSink<IN> extends CassandraSinkBase<IN, ResultSet> {
+public class CassandraPojoSink<IN> extends CassandraSinkBase<IN, AsyncResultSet> {
 
     private static final long serialVersionUID = 1L;
 
     protected final Class<IN> clazz;
-    private final MapperOptions options;
+    private final CassandraMapperOptions options;
     private final String keyspace;
-    protected transient Mapper<IN> mapper;
-    protected transient MappingManager mappingManager;
+    protected transient PojoMapper<IN> mapper;
+    private transient CassandraMapperOptions mapperOptions;
+    private transient PreparedStatement preparedStatement;
 
     /**
      * The main constructor for creating CassandraPojoSink.
      *
      * @param clazz Class instance
      */
-    public CassandraPojoSink(Class<IN> clazz, ClusterBuilder builder) {
+    public CassandraPojoSink(Class<IN> clazz, CassandraSessionBuilder builder) {
         this(clazz, builder, null, null);
     }
 
     public CassandraPojoSink(
-            Class<IN> clazz, ClusterBuilder builder, @Nullable MapperOptions options) {
+            Class<IN> clazz,
+            CassandraSessionBuilder builder,
+            @Nullable CassandraMapperOptions options) {
         this(clazz, builder, options, null);
     }
 
-    public CassandraPojoSink(Class<IN> clazz, ClusterBuilder builder, String keyspace) {
+    public CassandraPojoSink(Class<IN> clazz, CassandraSessionBuilder builder, String keyspace) {
         this(clazz, builder, null, keyspace);
     }
 
     public CassandraPojoSink(
             Class<IN> clazz,
-            ClusterBuilder builder,
-            @Nullable MapperOptions options,
+            CassandraSessionBuilder builder,
+            @Nullable CassandraMapperOptions options,
             String keyspace) {
         this(clazz, builder, options, keyspace, CassandraSinkBaseConfig.newBuilder().build());
     }
 
     CassandraPojoSink(
             Class<IN> clazz,
-            ClusterBuilder builder,
-            @Nullable MapperOptions options,
+            CassandraSessionBuilder builder,
+            @Nullable CassandraMapperOptions options,
             String keyspace,
             CassandraSinkBaseConfig config) {
         this(clazz, builder, options, keyspace, config, new NoOpCassandraFailureHandler());
@@ -84,8 +86,8 @@ public class CassandraPojoSink<IN> extends CassandraSinkBase<IN, ResultSet> {
 
     CassandraPojoSink(
             Class<IN> clazz,
-            ClusterBuilder builder,
-            @Nullable MapperOptions options,
+            CassandraSessionBuilder builder,
+            @Nullable CassandraMapperOptions options,
             String keyspace,
             CassandraSinkBaseConfig config,
             CassandraFailureHandler failureHandler) {
@@ -99,14 +101,9 @@ public class CassandraPojoSink<IN> extends CassandraSinkBase<IN, ResultSet> {
     public void open(Configuration configuration) {
         super.open(configuration);
         try {
-            this.mappingManager = new MappingManager(session);
-            this.mapper = mappingManager.mapper(clazz);
-            if (options != null) {
-                Mapper.Option[] optionsArray = options.getMapperOptions();
-                if (optionsArray != null) {
-                    this.mapper.setDefaultSaveOptions(optionsArray);
-                }
-            }
+            this.mapperOptions = options != null ? options : new CassandraMapperOptions();
+            this.mapper = PojoMapper.create(clazz);
+            this.preparedStatement = session.prepare(mapper.buildInsert(keyspace, mapperOptions));
         } catch (Exception e) {
             throw new RuntimeException(
                     "Cannot create CassandraPojoSink with input: " + clazz.getSimpleName(), e);
@@ -114,12 +111,7 @@ public class CassandraPojoSink<IN> extends CassandraSinkBase<IN, ResultSet> {
     }
 
     @Override
-    protected Session createSession() {
-        return cluster.connect(keyspace);
-    }
-
-    @Override
-    public ListenableFuture<ResultSet> send(IN value) {
-        return session.executeAsync(mapper.saveQuery(value));
+    public CompletionStage<AsyncResultSet> send(IN value) {
+        return session.executeAsync(mapper.bind(preparedStatement, value, mapperOptions));
     }
 }

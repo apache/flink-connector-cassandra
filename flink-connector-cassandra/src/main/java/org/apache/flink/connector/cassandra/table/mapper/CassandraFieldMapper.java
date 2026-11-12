@@ -20,7 +20,7 @@ package org.apache.flink.connector.cassandra.table.mapper;
 
 import org.apache.flink.annotation.Internal;
 
-import com.datastax.driver.core.Row;
+import com.datastax.oss.driver.api.core.cql.Row;
 
 import javax.annotation.Nullable;
 
@@ -57,13 +57,13 @@ public interface CassandraFieldMapper extends Serializable {
      * <ul>
      *   <li>Array elements: converting individual items from a List to Flink format
      *   <li>Map values: converting keys/values from a Map to Flink format
-     *   <li>UDT fields: converting individual fields extracted from a UDTValue
+     *   <li>UDT fields: converting individual fields extracted from a UdtValue
      * </ul>
      *
      * <p>Default implementation returns the value as-is (no conversion needed for primitive types).
      * Override this method when conversion to Flink internal format is required.
      *
-     * @param value the raw value to convert (String, Integer, UDTValue, etc.)
+     * @param value the raw value to convert (String, Integer, UdtValue, etc.)
      * @return the value converted to Flink internal format, or null if the input value is null
      */
     @Nullable

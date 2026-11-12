@@ -36,7 +36,7 @@ public final class CassandraFieldMapperFactory {
 
     /**
      * Creates a field mapper for the given logical type. Different mappers for different {@link
-     * com.datastax.driver.core.DataType}
+     * com.datastax.oss.driver.api.core.type.DataType}
      *
      * @param logicalType the Flink logical type
      * @return appropriate field mapper for the type

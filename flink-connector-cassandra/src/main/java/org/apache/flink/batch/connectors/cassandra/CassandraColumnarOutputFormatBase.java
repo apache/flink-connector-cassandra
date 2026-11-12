@@ -17,13 +17,11 @@
 
 package org.apache.flink.batch.connectors.cassandra;
 
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 import org.apache.flink.util.Preconditions;
 
-import com.datastax.driver.core.PreparedStatement;
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.ResultSetFuture;
-import com.google.common.base.Strings;
+import com.datastax.oss.driver.api.core.cql.AsyncResultSet;
+import com.datastax.oss.driver.api.core.cql.PreparedStatement;
 
 import java.time.Duration;
 import java.util.concurrent.CompletionStage;
@@ -35,18 +33,18 @@ import java.util.concurrent.CompletionStage;
  * @param <OUT> Type of the elements to write.
  */
 abstract class CassandraColumnarOutputFormatBase<OUT>
-        extends CassandraOutputFormatBase<OUT, ResultSet> {
+        extends CassandraOutputFormatBase<OUT, AsyncResultSet> {
     private final String insertQuery;
     private transient PreparedStatement prepared;
 
     public CassandraColumnarOutputFormatBase(
             String insertQuery,
-            ClusterBuilder builder,
+            CassandraSessionBuilder builder,
             int maxConcurrentRequests,
             Duration maxConcurrentRequestsTimeout) {
         super(builder, maxConcurrentRequests, maxConcurrentRequestsTimeout);
         Preconditions.checkArgument(
-                !Strings.isNullOrEmpty(insertQuery), "Query cannot be null or empty");
+                insertQuery != null && !insertQuery.isEmpty(), "Query cannot be null or empty");
         this.insertQuery = insertQuery;
     }
 
@@ -57,10 +55,9 @@ abstract class CassandraColumnarOutputFormatBase<OUT>
     }
 
     @Override
-    protected CompletionStage<ResultSet> send(OUT record) {
+    protected CompletionStage<AsyncResultSet> send(OUT record) {
         Object[] fields = extractFields(record);
-        final ResultSetFuture result = session.executeAsync(prepared.bind(fields));
-        return listenableFutureToCompletableFuture(result);
+        return session.executeAsync(prepared.bind(fields));
     }
 
     protected abstract Object[] extractFields(OUT record);

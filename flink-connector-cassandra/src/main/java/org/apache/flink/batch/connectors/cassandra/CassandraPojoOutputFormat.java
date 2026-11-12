@@ -17,13 +17,12 @@
 
 package org.apache.flink.batch.connectors.cassandra;
 
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
-import org.apache.flink.streaming.connectors.cassandra.MapperOptions;
+import org.apache.flink.connector.cassandra.mapper.PojoMapper;
+import org.apache.flink.streaming.connectors.cassandra.CassandraMapperOptions;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 import org.apache.flink.util.Preconditions;
 
-import com.datastax.driver.mapping.Mapper;
-import com.datastax.driver.mapping.MappingManager;
-import com.google.common.util.concurrent.ListenableFuture;
+import com.datastax.oss.driver.api.core.cql.PreparedStatement;
 
 import java.time.Duration;
 import java.util.concurrent.CompletionStage;
@@ -38,16 +37,20 @@ public class CassandraPojoOutputFormat<OUT> extends CassandraOutputFormatBase<OU
 
     private static final long serialVersionUID = -1701885135103942460L;
 
-    private final MapperOptions mapperOptions;
+    private final CassandraMapperOptions mapperOptions;
     private final Class<OUT> outputClass;
-    private transient Mapper<OUT> mapper;
+    private transient PojoMapper<OUT> mapper;
+    private transient CassandraMapperOptions options;
+    private transient PreparedStatement preparedStatement;
 
-    public CassandraPojoOutputFormat(ClusterBuilder builder, Class<OUT> outputClass) {
+    public CassandraPojoOutputFormat(CassandraSessionBuilder builder, Class<OUT> outputClass) {
         this(builder, outputClass, null);
     }
 
     public CassandraPojoOutputFormat(
-            ClusterBuilder builder, Class<OUT> outputClass, MapperOptions mapperOptions) {
+            CassandraSessionBuilder builder,
+            Class<OUT> outputClass,
+            CassandraMapperOptions mapperOptions) {
         this(
                 builder,
                 outputClass,
@@ -57,9 +60,9 @@ public class CassandraPojoOutputFormat<OUT> extends CassandraOutputFormatBase<OU
     }
 
     public CassandraPojoOutputFormat(
-            ClusterBuilder builder,
+            CassandraSessionBuilder builder,
             Class<OUT> outputClass,
-            MapperOptions mapperOptions,
+            CassandraMapperOptions mapperOptions,
             int maxConcurrentRequests,
             Duration maxConcurrentRequestsTimeout) {
         super(builder, maxConcurrentRequests, maxConcurrentRequestsTimeout);
@@ -72,20 +75,15 @@ public class CassandraPojoOutputFormat<OUT> extends CassandraOutputFormatBase<OU
     @Override
     protected void postOpen() {
         super.postOpen();
-        MappingManager mappingManager = new MappingManager(session);
-        this.mapper = mappingManager.mapper(outputClass);
-        if (mapperOptions != null) {
-            Mapper.Option[] optionsArray = mapperOptions.getMapperOptions();
-            if (optionsArray != null) {
-                mapper.setDefaultSaveOptions(optionsArray);
-            }
-        }
+        this.options = mapperOptions != null ? mapperOptions : new CassandraMapperOptions();
+        this.mapper = PojoMapper.create(outputClass);
+        this.preparedStatement = session.prepare(mapper.buildInsert(null, options));
     }
 
     @Override
     protected CompletionStage<Void> send(OUT record) {
-        final ListenableFuture<Void> result = mapper.saveAsync(record);
-        return listenableFutureToCompletableFuture(result);
+        return session.executeAsync(mapper.bind(preparedStatement, record, options))
+                .thenApply(resultSet -> null);
     }
 
     /** Closes all resources used. */
@@ -93,5 +91,6 @@ public class CassandraPojoOutputFormat<OUT> extends CassandraOutputFormatBase<OU
     protected void postClose() {
         super.postClose();
         mapper = null;
+        preparedStatement = null;
     }
 }

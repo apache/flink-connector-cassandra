@@ -19,23 +19,26 @@
 package org.apache.flink.connector.cassandra.source;
 
 import org.apache.flink.configuration.MemorySize;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
+import org.apache.flink.streaming.connectors.cassandra.CassandraMapperOptions;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.types.logical.IntType;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.table.types.logical.VarCharType;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.ColumnMetadata;
-import com.datastax.driver.core.KeyspaceMetadata;
-import com.datastax.driver.core.Metadata;
-import com.datastax.driver.core.Session;
-import com.datastax.driver.core.TableMetadata;
-import com.datastax.driver.mapping.Mapper;
+import com.datastax.oss.driver.api.core.CqlIdentifier;
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.CqlSessionBuilder;
+import com.datastax.oss.driver.api.core.metadata.Metadata;
+import com.datastax.oss.driver.api.core.metadata.schema.ColumnMetadata;
+import com.datastax.oss.driver.api.core.metadata.schema.KeyspaceMetadata;
+import com.datastax.oss.driver.api.core.metadata.schema.TableMetadata;
+import com.datastax.oss.driver.api.mapper.annotations.Entity;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import java.util.Collections;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -43,29 +46,28 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Unit tests for {@link CassandraSourceBuilder}. */
 class CassandraSourceBuilderTest {
 
-    private static final ClusterBuilder TEST_CLUSTER_BUILDER =
-            new ClusterBuilder() {
+    private static final CassandraSessionBuilder TEST_CLUSTER_BUILDER =
+            new CassandraSessionBuilder() {
                 @Override
-                protected Cluster buildCluster(Cluster.Builder builder) {
-                    // Create a mock cluster with proper metadata
-                    Cluster mockCluster = Mockito.mock(Cluster.class);
-                    Session mockSession = Mockito.mock(Session.class);
+                protected CqlSession buildSession(CqlSessionBuilder builder) {
+                    // Create a mock session with proper metadata
+                    CqlSession mockSession = Mockito.mock(CqlSession.class);
                     Metadata mockMetadata = Mockito.mock(Metadata.class);
                     KeyspaceMetadata mockKeyspace = Mockito.mock(KeyspaceMetadata.class);
                     TableMetadata mockTable = Mockito.mock(TableMetadata.class);
                     ColumnMetadata mockColumn = Mockito.mock(ColumnMetadata.class);
 
                     // Set up the mock chain
-                    Mockito.when(mockCluster.connect()).thenReturn(mockSession);
-                    Mockito.when(mockCluster.getMetadata()).thenReturn(mockMetadata);
+                    Mockito.when(mockSession.getMetadata()).thenReturn(mockMetadata);
                     Mockito.when(mockMetadata.getKeyspace("test_keyspace"))
-                            .thenReturn(mockKeyspace);
-                    Mockito.when(mockKeyspace.getTable("test_table")).thenReturn(mockTable);
+                            .thenReturn(Optional.of(mockKeyspace));
+                    Mockito.when(mockKeyspace.getTable("test_table"))
+                            .thenReturn(Optional.of(mockTable));
                     Mockito.when(mockTable.getPartitionKey())
                             .thenReturn(Collections.singletonList(mockColumn));
-                    Mockito.when(mockColumn.getName()).thenReturn("id");
+                    Mockito.when(mockColumn.getName()).thenReturn(CqlIdentifier.fromCql("id"));
 
-                    return mockCluster;
+                    return mockSession;
                 }
             };
 
@@ -76,10 +78,9 @@ class CassandraSourceBuilderTest {
         // Test POJO source builder
         CassandraSource<TestPojo> source =
                 CassandraSource.builder()
-                        .setClusterBuilder(TEST_CLUSTER_BUILDER)
+                        .setSessionBuilder(TEST_CLUSTER_BUILDER)
                         .setQuery(TEST_QUERY)
-                        .setMapperOptions(
-                                () -> new Mapper.Option[] {Mapper.Option.saveNullFields(true)})
+                        .setMapperOptions(new CassandraMapperOptions().saveNullFields(true))
                         .setMaxSplitMemorySize(MemorySize.ofMebiBytes(32))
                         .buildForPojo(TestPojo.class);
 
@@ -98,7 +99,7 @@ class CassandraSourceBuilderTest {
 
         CassandraSource<RowData> source =
                 CassandraSource.builder()
-                        .setClusterBuilder(TEST_CLUSTER_BUILDER)
+                        .setSessionBuilder(TEST_CLUSTER_BUILDER)
                         .setQuery(TEST_QUERY)
                         .buildForRowData(rowType);
 
@@ -114,13 +115,13 @@ class CassandraSourceBuilderTest {
                                         .setQuery(TEST_QUERY)
                                         .buildForPojo(TestPojo.class))
                 .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("ClusterBuilder is required");
+                .hasMessageContaining("CassandraSessionBuilder is required");
 
         // Test missing query
         assertThatThrownBy(
                         () ->
                                 CassandraSource.builder()
-                                        .setClusterBuilder(TEST_CLUSTER_BUILDER)
+                                        .setSessionBuilder(TEST_CLUSTER_BUILDER)
                                         .buildForPojo(TestPojo.class))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("Query is required");
@@ -135,7 +136,7 @@ class CassandraSourceBuilderTest {
         assertThatThrownBy(
                         () ->
                                 CassandraSource.builder()
-                                        .setClusterBuilder(TEST_CLUSTER_BUILDER)
+                                        .setSessionBuilder(TEST_CLUSTER_BUILDER)
                                         .setQuery(TEST_QUERY)
                                         .setMaxSplitMemorySize(MemorySize.parse("5b"))
                                         .buildForPojo(TestPojo.class))
@@ -146,7 +147,7 @@ class CassandraSourceBuilderTest {
         assertThatThrownBy(
                         () ->
                                 CassandraSource.builder()
-                                        .setClusterBuilder(TEST_CLUSTER_BUILDER)
+                                        .setSessionBuilder(TEST_CLUSTER_BUILDER)
                                         .setQuery(TEST_QUERY)
                                         .setMaxSplitMemorySize(MemorySize.parse("5b"))
                                         .buildForRowData(rowType))
@@ -159,7 +160,7 @@ class CassandraSourceBuilderTest {
         // Test that default mapper options work
         CassandraSource<TestPojo> source =
                 CassandraSource.builder()
-                        .setClusterBuilder(TEST_CLUSTER_BUILDER)
+                        .setSessionBuilder(TEST_CLUSTER_BUILDER)
                         .setQuery(TEST_QUERY)
                         .buildForPojo(TestPojo.class);
 
@@ -171,7 +172,7 @@ class CassandraSourceBuilderTest {
         // Test valid memory sizes
         CassandraSource<TestPojo> source1 =
                 CassandraSource.builder()
-                        .setClusterBuilder(TEST_CLUSTER_BUILDER)
+                        .setSessionBuilder(TEST_CLUSTER_BUILDER)
                         .setQuery(TEST_QUERY)
                         .setMaxSplitMemorySize(MemorySize.ofMebiBytes(64)) // Default
                         .buildForPojo(TestPojo.class);
@@ -179,7 +180,7 @@ class CassandraSourceBuilderTest {
 
         CassandraSource<TestPojo> source2 =
                 CassandraSource.builder()
-                        .setClusterBuilder(TEST_CLUSTER_BUILDER)
+                        .setSessionBuilder(TEST_CLUSTER_BUILDER)
                         .setQuery(TEST_QUERY)
                         .setMaxSplitMemorySize(MemorySize.ofMebiBytes(128))
                         .buildForPojo(TestPojo.class);
@@ -191,7 +192,7 @@ class CassandraSourceBuilderTest {
         // Null mapper options should be allowed and use defaults
         CassandraSource<TestPojo> source =
                 CassandraSource.builder()
-                        .setClusterBuilder(TEST_CLUSTER_BUILDER)
+                        .setSessionBuilder(TEST_CLUSTER_BUILDER)
                         .setQuery(TEST_QUERY)
                         .setMapperOptions(null)
                         .buildForPojo(TestPojo.class);
@@ -199,6 +200,7 @@ class CassandraSourceBuilderTest {
     }
 
     /** Test POJO class for testing. */
+    @Entity
     public static class TestPojo {
         private int id;
         private String name;

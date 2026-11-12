@@ -26,12 +26,11 @@ import org.apache.flink.connector.base.source.reader.splitreader.SplitsChange;
 import org.apache.flink.connector.cassandra.source.CassandraSource;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.Metadata;
-import com.datastax.driver.core.PreparedStatement;
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.Session;
-import com.datastax.driver.core.Token;
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.cql.PreparedStatement;
+import com.datastax.oss.driver.api.core.cql.ResultSet;
+import com.datastax.oss.driver.api.core.metadata.TokenMap;
+import com.datastax.oss.driver.api.core.metadata.token.Token;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,18 +52,15 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
 
     private static final Logger LOG = LoggerFactory.getLogger(CassandraSplitReader.class);
 
-    private final Cluster cluster;
-    private final Session session;
+    private final CqlSession session;
     private final Set<CassandraSplit> unprocessedSplits;
     private final AtomicBoolean wakeup = new AtomicBoolean(false);
     private final String query;
     private final String partitionKey;
 
-    public CassandraSplitReader(
-            Cluster cluster, Session session, String query, String partitionKey) {
+    public CassandraSplitReader(CqlSession session, String query, String partitionKey) {
         this.unprocessedSplits = new HashSet<>();
         this.query = query;
-        this.cluster = cluster;
         this.session = session;
         this.partitionKey = partitionKey;
     }
@@ -86,11 +82,15 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
                 break;
             }
             try {
-                Metadata clusterMetadata = cluster.getMetadata();
-                Token startToken =
-                        clusterMetadata.newToken(cassandraSplit.getRingRangeStart().toString());
-                Token endToken =
-                        clusterMetadata.newToken(cassandraSplit.getRingRangeEnd().toString());
+                TokenMap tokenMap =
+                        session.getMetadata()
+                                .getTokenMap()
+                                .orElseThrow(
+                                        () ->
+                                                new IllegalStateException(
+                                                        "The token metadata of the cluster is not available."));
+                Token startToken = tokenMap.parse(cassandraSplit.getRingRangeStart().toString());
+                Token endToken = tokenMap.parse(cassandraSplit.getRingRangeEnd().toString());
                 final ResultSet resultSet =
                         session.execute(
                                 preparedStatement
@@ -184,11 +184,11 @@ public class CassandraSplitReader implements SplitReader<CassandraRow, Cassandra
         resultSet.forEach(
                 row ->
                         output.computeIfAbsent(cassandraSplit.splitId(), id -> new ArrayList<>())
-                                .add(new CassandraRow(row, resultSet.getExecutionInfo())));
+                                .add(new CassandraRow(row)));
     }
 
     @Override
     public void close() throws Exception {
-        // nothing to do as the cluster/session is managed by the SourceReader
+        // nothing to do as the session is managed by the SourceReader
     }
 }

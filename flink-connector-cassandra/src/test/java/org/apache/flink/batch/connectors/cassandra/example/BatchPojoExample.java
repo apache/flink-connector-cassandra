@@ -22,12 +22,14 @@ import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.batch.connectors.cassandra.CassandraPojoInputFormat;
 import org.apache.flink.batch.connectors.cassandra.CassandraPojoOutputFormat;
 import org.apache.flink.connectors.cassandra.utils.Pojo;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
+import org.apache.flink.streaming.connectors.cassandra.CassandraMapperOptions;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.ConsistencyLevel;
-import com.datastax.driver.mapping.Mapper;
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.CqlSessionBuilder;
+import com.datastax.oss.driver.api.core.DefaultConsistencyLevel;
 
+import java.net.InetSocketAddress;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -57,21 +59,23 @@ public class BatchPojoExample {
 
         DataSet<Pojo> dataSet = env.fromCollection(customCassandraAnnotatedPojos);
 
-        ClusterBuilder clusterBuilder =
-                new ClusterBuilder() {
+        CassandraSessionBuilder sessionBuilder =
+                new CassandraSessionBuilder() {
                     private static final long serialVersionUID = -1754532803757154795L;
 
                     @Override
-                    protected Cluster buildCluster(Cluster.Builder builder) {
-                        return builder.addContactPoints("127.0.0.1").build();
+                    protected CqlSession buildSession(CqlSessionBuilder builder) {
+                        return builder.addContactPoint(new InetSocketAddress("127.0.0.1", 9042))
+                                .withLocalDatacenter("datacenter1")
+                                .build();
                     }
                 };
 
         dataSet.output(
                 new CassandraPojoOutputFormat<>(
-                        clusterBuilder,
+                        sessionBuilder,
                         Pojo.class,
-                        () -> new Mapper.Option[] {Mapper.Option.saveNullFields(true)}));
+                        new CassandraMapperOptions().saveNullFields(true)));
 
         env.execute("Write");
 
@@ -82,12 +86,10 @@ public class BatchPojoExample {
                 env.createInput(
                         new CassandraPojoInputFormat<>(
                                 SELECT_QUERY,
-                                clusterBuilder,
+                                sessionBuilder,
                                 Pojo.class,
-                                () ->
-                                        new Mapper.Option[] {
-                                            Mapper.Option.consistencyLevel(ConsistencyLevel.ONE)
-                                        }));
+                                new CassandraMapperOptions()
+                                        .consistencyLevel(DefaultConsistencyLevel.ONE)));
 
         inputDS.print();
     }

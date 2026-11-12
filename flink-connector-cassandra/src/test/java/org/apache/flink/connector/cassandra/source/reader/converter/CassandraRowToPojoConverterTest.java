@@ -20,41 +20,30 @@ package org.apache.flink.connector.cassandra.source.reader.converter;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.connector.cassandra.source.reader.CassandraRow;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
-import org.apache.flink.streaming.connectors.cassandra.MapperOptions;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.ColumnDefinitions;
-import com.datastax.driver.core.ExecutionInfo;
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.Row;
-import com.datastax.driver.core.Session;
-import com.datastax.driver.mapping.Mapper;
-import com.datastax.driver.mapping.annotations.Column;
-import com.datastax.driver.mapping.annotations.PartitionKey;
-import com.datastax.driver.mapping.annotations.Table;
+import com.datastax.oss.driver.api.core.CqlIdentifier;
+import com.datastax.oss.driver.api.core.cql.ColumnDefinitions;
+import com.datastax.oss.driver.api.core.cql.Row;
+import com.datastax.oss.driver.api.core.type.reflect.GenericType;
+import com.datastax.oss.driver.api.mapper.annotations.CqlName;
+import com.datastax.oss.driver.api.mapper.annotations.Entity;
+import com.datastax.oss.driver.api.mapper.annotations.PartitionKey;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.util.Date;
-import java.util.Iterator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 /** Unit tests for {@link CassandraRowToPojoConverter}. */
 class CassandraRowToPojoConverterTest {
 
-    @Mock private ClusterBuilder clusterBuilder;
-    @Mock private Cluster cluster;
-    @Mock private Session session;
-    @Mock private MapperOptions mapperOptions;
     @Mock private Row mockRow;
-    @Mock private ExecutionInfo mockExecutionInfo;
-    @Mock private CassandraRow mockCassandraRow;
     @Mock private ColumnDefinitions mockColumnDefinitions;
 
     private CassandraRowToPojoConverter<TestPojo> converter;
@@ -62,16 +51,13 @@ class CassandraRowToPojoConverterTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        when(clusterBuilder.getCluster()).thenReturn(cluster);
-        when(cluster.connect()).thenReturn(session);
-        when(mapperOptions.getMapperOptions()).thenReturn(new Mapper.Option[0]);
-        converter =
-                new CassandraRowToPojoConverter<>(TestPojo.class, mapperOptions, clusterBuilder);
+        converter = new CassandraRowToPojoConverter<>(TestPojo.class);
     }
 
     @Test
     void testGetProducedType() {
         TypeInformation<TestPojo> typeInfo = converter.getProducedType();
+
         assertThat(typeInfo).isNotNull();
         assertThat(typeInfo.getTypeClass()).isEqualTo(TestPojo.class);
     }
@@ -83,114 +69,70 @@ class CassandraRowToPojoConverterTest {
 
     @Test
     void testConstructorValidation() {
-        assertThatThrownBy(
-                        () ->
-                                new CassandraRowToPojoConverter<>(
-                                        null, mapperOptions, clusterBuilder))
+        assertThatThrownBy(() -> new CassandraRowToPojoConverter<>(null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("POJO class cannot be null");
 
-        assertThatThrownBy(
-                        () ->
-                                new CassandraRowToPojoConverter<>(
-                                        TestPojo.class, null, clusterBuilder))
-                .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("Mapper options cannot be null");
-
-        assertThatThrownBy(
-                        () ->
-                                new CassandraRowToPojoConverter<>(
-                                        TestPojo.class, mapperOptions, null))
-                .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("Cluster builder cannot be null");
+        assertThatThrownBy(() -> new CassandraRowToPojoConverter<>(String.class))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must be annotated with");
     }
 
     @Test
-    void testSingleRowResultSetMechanics() throws Exception {
-        // Setup mocks
-        when(mockCassandraRow.getRow()).thenReturn(mockRow);
-        when(mockCassandraRow.getExecutionInfo()).thenReturn(mockExecutionInfo);
+    void testConvert() {
+        final Date createdAt = new Date(1700000000000L);
         when(mockRow.getColumnDefinitions()).thenReturn(mockColumnDefinitions);
+        when(mockColumnDefinitions.contains(any(CqlIdentifier.class))).thenReturn(true);
+        when(mockRow.isNull(any(CqlIdentifier.class))).thenReturn(false);
+        when(mockRow.isNull(CqlIdentifier.fromCql("name"))).thenReturn(true);
+        when(mockRow.get(CqlIdentifier.fromCql("id"), GenericType.STRING)).thenReturn("id1");
+        when(mockRow.get(CqlIdentifier.fromCql("age"), GenericType.INTEGER)).thenReturn(42);
+        when(mockRow.get(CqlIdentifier.fromCql("active"), GenericType.BOOLEAN)).thenReturn(true);
+        when(mockRow.get(CqlIdentifier.fromCql("created_at"), GenericType.of(Date.class)))
+                .thenReturn(createdAt);
 
-        // Create the converter and use reflection to access SingleRowResultSet
-        Class<?> singleRowResultSetClass =
-                Class.forName(
-                        "org.apache.flink.connector.cassandra.source.reader.converter.CassandraRowToPojoConverter$SingleRowResultSet");
+        final TestPojo pojo = converter.convert(new CassandraRow(mockRow));
 
-        // Create an instance of SingleRowResultSet
-        Object singleRowResultSet =
-                singleRowResultSetClass
-                        .getDeclaredConstructor(Row.class, ExecutionInfo.class)
-                        .newInstance(mockRow, mockExecutionInfo);
-
-        ResultSet resultSet = (ResultSet) singleRowResultSet;
-
-        // Test one() method
-        assertThat(resultSet.one()).isEqualTo(mockRow);
-
-        // Test all() method
-        assertThat(resultSet.all()).hasSize(1);
-        assertThat(resultSet.all().get(0)).isEqualTo(mockRow);
-
-        // Test iterator mechanics
-        Iterator<Row> iterator = resultSet.iterator();
-        assertThat(iterator).isNotNull();
-        assertThat(iterator.hasNext()).isTrue();
-        assertThat(iterator.next()).isEqualTo(mockRow);
-
-        // Test wasApplied() method
-        assertThat(resultSet.wasApplied()).isTrue();
-
-        // Test other ResultSet methods
-        assertThat(resultSet.isExhausted()).isTrue();
-        assertThat(resultSet.isFullyFetched()).isTrue();
-        assertThat(resultSet.getAvailableWithoutFetching()).isEqualTo(1);
-        assertThat(resultSet.getExecutionInfo()).isEqualTo(mockExecutionInfo);
-        assertThat(resultSet.getAllExecutionInfo()).hasSize(1);
-        assertThat(resultSet.getAllExecutionInfo().get(0)).isEqualTo(mockExecutionInfo);
-        assertThat(resultSet.getColumnDefinitions()).isEqualTo(mockColumnDefinitions);
-
-        // Test fetchMoreResults returns null future
-        assertThat(resultSet.fetchMoreResults()).isNotNull();
-        assertThat(resultSet.fetchMoreResults().get()).isNull();
+        assertThat(pojo.getId()).isEqualTo("id1");
+        assertThat(pojo.getName()).isNull();
+        assertThat(pojo.getAge()).isEqualTo(42);
+        assertThat(pojo.isActive()).isTrue();
+        assertThat(pojo.getCreatedAt()).isEqualTo(createdAt);
     }
 
     @Test
-    void testMapperOptionsConfiguration() {
-        // Test that mapper options are properly stored
-        Mapper.Option[] options = new Mapper.Option[2];
-        when(mapperOptions.getMapperOptions()).thenReturn(options);
+    void testConvertIgnoresMissingColumns() {
+        when(mockRow.getColumnDefinitions()).thenReturn(mockColumnDefinitions);
+        when(mockColumnDefinitions.contains(any(CqlIdentifier.class))).thenReturn(false);
+        when(mockColumnDefinitions.contains(CqlIdentifier.fromCql("id"))).thenReturn(true);
+        when(mockRow.get(CqlIdentifier.fromCql("id"), GenericType.STRING)).thenReturn("id1");
 
-        CassandraRowToPojoConverter<TestPojo> converterWithOptions =
-                new CassandraRowToPojoConverter<>(TestPojo.class, mapperOptions, clusterBuilder);
+        final TestPojo pojo = converter.convert(new CassandraRow(mockRow));
 
-        // Verify the converter was created successfully with mapper options
-        assertThat(converterWithOptions).isNotNull();
-
-        // When mapper options return null, converter should still work
-        when(mapperOptions.getMapperOptions()).thenReturn(null);
-        CassandraRowToPojoConverter<TestPojo> converterWithNullOptions =
-                new CassandraRowToPojoConverter<>(TestPojo.class, mapperOptions, clusterBuilder);
-        assertThat(converterWithNullOptions).isNotNull();
+        assertThat(pojo.getId()).isEqualTo("id1");
+        assertThat(pojo.getName()).isNull();
+        assertThat(pojo.getAge()).isZero();
+        assertThat(pojo.getCreatedAt()).isNull();
     }
 
     /** Test POJO class with Cassandra annotations. */
-    @Table(keyspace = "test_keyspace", name = "test_table")
+    @Entity(defaultKeyspace = "test_keyspace")
+    @CqlName("test_table")
     public static class TestPojo {
         @PartitionKey
-        @Column(name = "id")
+        @CqlName("id")
         private String id;
 
-        @Column(name = "name")
+        @CqlName("name")
         private String name;
 
-        @Column(name = "age")
+        @CqlName("age")
         private int age;
 
-        @Column(name = "active")
+        @CqlName("active")
         private boolean active;
 
-        @Column(name = "created_at")
+        // mapped to created_at by the default naming strategy
         private Date createdAt;
 
         // Getters and setters

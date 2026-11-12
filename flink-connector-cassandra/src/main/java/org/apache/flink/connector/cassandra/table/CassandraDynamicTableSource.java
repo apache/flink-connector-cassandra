@@ -21,7 +21,7 @@ package org.apache.flink.connector.cassandra.table;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.connector.cassandra.source.CassandraSource;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 import org.apache.flink.table.connector.ChangelogMode;
 import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.connector.source.ScanTableSource;
@@ -36,7 +36,7 @@ import java.util.Objects;
 @Internal
 public class CassandraDynamicTableSource implements ScanTableSource {
 
-    private final ClusterBuilder clusterBuilder;
+    private final CassandraSessionBuilder sessionBuilder;
     private final String keyspace;
     private final String table;
     private final DataType producedDataType;
@@ -44,13 +44,13 @@ public class CassandraDynamicTableSource implements ScanTableSource {
     private final long maxSplitMemorySize;
 
     public CassandraDynamicTableSource(
-            ClusterBuilder clusterBuilder,
+            CassandraSessionBuilder sessionBuilder,
             String keyspace,
             String table,
             DataType producedDataType,
             String query,
             long maxSplitMemorySize) {
-        this.clusterBuilder = clusterBuilder;
+        this.sessionBuilder = sessionBuilder;
         this.keyspace = keyspace;
         this.table = table;
         this.producedDataType = producedDataType;
@@ -69,7 +69,7 @@ public class CassandraDynamicTableSource implements ScanTableSource {
 
         CassandraSource<RowData> cassandraSource =
                 CassandraSource.builder()
-                        .setClusterBuilder(clusterBuilder)
+                        .setSessionBuilder(sessionBuilder)
                         .setQuery(query)
                         .setMaxSplitMemorySize(MemorySize.parse(maxSplitMemorySize + "b"))
                         .buildForRowData(rowType);
@@ -80,7 +80,7 @@ public class CassandraDynamicTableSource implements ScanTableSource {
     @Override
     public DynamicTableSource copy() {
         return new CassandraDynamicTableSource(
-                clusterBuilder, keyspace, table, producedDataType, query, maxSplitMemorySize);
+                sessionBuilder, keyspace, table, producedDataType, query, maxSplitMemorySize);
     }
 
     @Override
@@ -89,8 +89,8 @@ public class CassandraDynamicTableSource implements ScanTableSource {
     }
 
     // Package-private getters for testing
-    ClusterBuilder getClusterBuilder() {
-        return clusterBuilder;
+    CassandraSessionBuilder getSessionBuilder() {
+        return sessionBuilder;
     }
 
     String getKeyspace() {
@@ -119,7 +119,7 @@ public class CassandraDynamicTableSource implements ScanTableSource {
         }
         CassandraDynamicTableSource that = (CassandraDynamicTableSource) o;
         return maxSplitMemorySize == that.maxSplitMemorySize
-                && Objects.equals(clusterBuilder, that.clusterBuilder)
+                && Objects.equals(sessionBuilder, that.sessionBuilder)
                 && Objects.equals(keyspace, that.keyspace)
                 && Objects.equals(table, that.table)
                 && Objects.equals(producedDataType, that.producedDataType)
@@ -129,6 +129,6 @@ public class CassandraDynamicTableSource implements ScanTableSource {
     @Override
     public int hashCode() {
         return Objects.hash(
-                clusterBuilder, keyspace, table, producedDataType, query, maxSplitMemorySize);
+                sessionBuilder, keyspace, table, producedDataType, query, maxSplitMemorySize);
     }
 }

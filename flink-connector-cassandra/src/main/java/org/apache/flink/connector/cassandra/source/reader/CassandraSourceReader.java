@@ -24,8 +24,7 @@ import org.apache.flink.connector.base.source.reader.SingleThreadMultiplexSource
 import org.apache.flink.connector.cassandra.source.reader.converter.CassandraRowToTypeConverter;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.Session;
+import com.datastax.oss.driver.api.core.CqlSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,22 +41,19 @@ class CassandraSourceReader<OUT>
 
     private static final Logger LOG = LoggerFactory.getLogger(CassandraSourceReader.class);
 
-    private final Cluster cluster;
-    private final Session session;
+    private final CqlSession session;
 
     CassandraSourceReader(
             SourceReaderContext context,
             String query,
             String partitionKey,
-            Cluster cluster,
-            Session session,
+            CqlSession session,
             CassandraRowToTypeConverter<OUT> rowConverter) {
         super(
-                () -> new CassandraSplitReader(cluster, session, query, partitionKey),
+                () -> new CassandraSplitReader(session, query, partitionKey),
                 new CassandraRowEmitter<>(rowConverter),
                 context.getConfiguration(),
                 context);
-        this.cluster = cluster;
         this.session = session;
     }
 
@@ -90,13 +86,6 @@ class CassandraSourceReader<OUT>
             }
         } catch (Exception e) {
             LOG.error("Error while closing session.", e);
-        }
-        try {
-            if (cluster != null) {
-                cluster.close();
-            }
-        } catch (Exception e) {
-            LOG.error("Error while closing cluster.", e);
         }
     }
 }

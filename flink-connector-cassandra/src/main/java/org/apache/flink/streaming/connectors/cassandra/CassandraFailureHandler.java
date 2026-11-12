@@ -45,8 +45,9 @@ import java.io.Serializable;
  *
  * }</pre>
  *
- * <p>The above example will let the sink ignore the WriteTimeoutException, without failing the
- * sink. For all other failures, the sink will fail.
+ * <p>The above example will let the sink ignore the {@code
+ * com.datastax.oss.driver.api.core.servererrors.WriteTimeoutException}, without failing the sink.
+ * For all other failures, the sink will fail.
  */
 @PublicEvolving
 public interface CassandraFailureHandler extends Serializable {

@@ -22,10 +22,10 @@ import org.apache.flink.api.connector.source.SplitEnumerator;
 import org.apache.flink.api.connector.source.SplitEnumeratorContext;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 import org.apache.flink.connector.cassandra.source.split.SplitsGenerator;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.Session;
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.metadata.TokenMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,24 +44,22 @@ public final class CassandraSplitEnumerator
 
     private final SplitEnumeratorContext<CassandraSplit> enumeratorContext;
     private CassandraEnumeratorState state;
-    private final Cluster cluster;
     private final Long maxSplitMemorySize;
-    private final Session session;
+    private final CqlSession session;
     private final String keyspace;
     private final String table;
 
     public CassandraSplitEnumerator(
             SplitEnumeratorContext<CassandraSplit> enumeratorContext,
             CassandraEnumeratorState state,
-            ClusterBuilder clusterBuilder,
+            CassandraSessionBuilder sessionBuilder,
             Long maxSplitMemorySize,
             String keyspace,
             String table) {
         this.enumeratorContext = enumeratorContext;
         this.state = state == null ? new CassandraEnumeratorState() : state /* snapshot restore*/;
-        this.cluster = clusterBuilder.getCluster();
         this.maxSplitMemorySize = maxSplitMemorySize;
-        this.session = cluster.newSession();
+        this.session = sessionBuilder.getSession();
         this.keyspace = keyspace;
         this.table = table;
     }
@@ -78,7 +76,15 @@ public final class CassandraSplitEnumerator
 
     private CassandraEnumeratorState prepareSplits() {
         final int parallelism = enumeratorContext.currentParallelism();
-        final String partitionerName = cluster.getMetadata().getPartitioner();
+        final String partitionerName =
+                session.getMetadata()
+                        .getTokenMap()
+                        .map(TokenMap::getPartitionerName)
+                        .orElseThrow(
+                                () ->
+                                        new IllegalStateException(
+                                                "The token metadata of the cluster is not available. Make sure that"
+                                                        + " advanced.metadata.token-map.enabled is not disabled in the driver configuration."));
         final SplitsGenerator.CassandraPartitioner partitioner =
                 partitionerName.contains(MURMUR3PARTITIONER.getClassName())
                         ? MURMUR3PARTITIONER
@@ -136,13 +142,6 @@ public final class CassandraSplitEnumerator
             }
         } catch (Exception e) {
             LOG.error("Error while closing session.", e);
-        }
-        try {
-            if (cluster != null) {
-                cluster.close();
-            }
-        } catch (Exception e) {
-            LOG.error("Error while closing cluster.", e);
         }
     }
 }

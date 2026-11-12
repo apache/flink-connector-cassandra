@@ -26,6 +26,7 @@ import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.typeutils.TupleTypeInfo;
 import org.apache.flink.api.java.typeutils.TypeExtractor;
@@ -47,12 +48,12 @@ import org.apache.flink.table.api.internal.TableEnvironmentInternal;
 import org.apache.flink.testutils.junit.extensions.retry.RetryExtension;
 import org.apache.flink.types.Row;
 
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.mapping.Mapper;
-import com.datastax.driver.mapping.annotations.Table;
+import com.datastax.oss.driver.api.core.cql.ResultSet;
+import com.datastax.oss.driver.api.mapper.annotations.CqlName;
+import com.datastax.oss.driver.api.mapper.annotations.Entity;
 import net.bytebuddy.ByteBuddy;
+import net.bytebuddy.description.annotation.AnnotationDescription;
 import org.assertj.core.api.recursive.comparison.RecursiveComparisonConfiguration;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -61,10 +62,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
@@ -141,51 +142,16 @@ class CassandraConnectorITCase
         return new ByteBuddy()
                 .redefine(Pojo.class)
                 .name("org.apache.flink.streaming.connectors.cassandra.Pojo" + tableName)
-                .annotateType(createTableAnnotation(keyspace, tableName))
+                .annotateType(
+                        AnnotationDescription.Builder.ofType(Entity.class)
+                                .define("defaultKeyspace", keyspace)
+                                .build(),
+                        AnnotationDescription.Builder.ofType(CqlName.class)
+                                .define("value", tableName)
+                                .build())
                 .make()
                 .load(Pojo.class.getClassLoader())
                 .getLoaded();
-    }
-
-    @NotNull
-    private static Table createTableAnnotation(String keyspace, String tableName) {
-        return new Table() {
-
-            @Override
-            public String keyspace() {
-                return keyspace;
-            }
-
-            @Override
-            public String name() {
-                return tableName;
-            }
-
-            @Override
-            public boolean caseSensitiveKeyspace() {
-                return false;
-            }
-
-            @Override
-            public boolean caseSensitiveTable() {
-                return false;
-            }
-
-            @Override
-            public String writeConsistency() {
-                return "";
-            }
-
-            @Override
-            public String readConsistency() {
-                return "";
-            }
-
-            @Override
-            public Class<? extends Annotation> annotationType() {
-                return Table.class;
-            }
-        };
     }
 
     // ------------------------------------------------------------------------
@@ -218,7 +184,7 @@ class CassandraConnectorITCase
                 new CassandraPojoOutputFormat<>(
                         cassandraTestEnvironment.getBuilderForWriting(),
                         annotatedPojoClass,
-                        () -> new Mapper.Option[] {Mapper.Option.saveNullFields(true)});
+                        new CassandraMapperOptions().saveNullFields(true));
 
         final Constructor<T> pojoConstructor = getPojoConstructor(annotatedPojoClass);
         List<T> pojos = new ArrayList<>();
@@ -275,8 +241,10 @@ class CassandraConnectorITCase
         final String tableName = TABLE_NAME_PREFIX + tableID;
 
         final Class<? extends Pojo> annotatedPojoClass = annotatePojoWithTable(KEYSPACE, tableName);
-        final Table pojoTableAnnotation = annotatedPojoClass.getAnnotation(Table.class);
-        assertThat(pojoTableAnnotation.name()).contains(tableName);
+        final CqlName pojoTableAnnotation = annotatedPojoClass.getAnnotation(CqlName.class);
+        assertThat(pojoTableAnnotation.value()).contains(tableName);
+        assertThat(annotatedPojoClass.getAnnotation(Entity.class).defaultKeyspace())
+                .isEqualTo(KEYSPACE);
     }
 
     // ------------------------------------------------------------------------
@@ -316,7 +284,7 @@ class CassandraConnectorITCase
             list.add(x);
         }
 
-        for (com.datastax.driver.core.Row s : result) {
+        for (com.datastax.oss.driver.api.core.cql.Row s : result) {
             list.remove(new Integer(s.getInt(TUPLE_COUNTER_FIELD)));
         }
         assertThat(list)
@@ -336,7 +304,7 @@ class CassandraConnectorITCase
             list.add(x);
         }
 
-        for (com.datastax.driver.core.Row s : result) {
+        for (com.datastax.oss.driver.api.core.cql.Row s : result) {
             list.remove(new Integer(s.getInt(TUPLE_COUNTER_FIELD)));
         }
         assertThat(list)
@@ -359,7 +327,7 @@ class CassandraConnectorITCase
             list.add(x);
         }
 
-        for (com.datastax.driver.core.Row s : result) {
+        for (com.datastax.oss.driver.api.core.cql.Row s : result) {
             list.remove(new Integer(s.getInt(TUPLE_COUNTER_FIELD)));
         }
         assertThat(list)
@@ -388,7 +356,7 @@ class CassandraConnectorITCase
                 cassandraTestEnvironment.executeRequestWithTimeout(
                         injectTableName(SELECT_DATA_QUERY));
 
-        for (com.datastax.driver.core.Row s : result) {
+        for (com.datastax.oss.driver.api.core.cql.Row s : result) {
             actual.add(s.getInt(TUPLE_COUNTER_FIELD));
         }
 
@@ -479,6 +447,71 @@ class CassandraConnectorITCase
                 cassandraTestEnvironment.executeRequestWithTimeout(
                         injectTableName(SELECT_DATA_QUERY));
         assertThat(rs.all()).hasSize(20);
+    }
+
+    @Test
+    void testJavaUtilDateIsMappedToTimestamp() throws Exception {
+        final String table = KEYSPACE + "." + TABLE_NAME_PREFIX + "dates_" + tableID;
+        cassandraTestEnvironment.executeRequestWithTimeout(
+                "CREATE TABLE " + table + " (id text PRIMARY KEY, created_at timestamp);");
+        final Date createdAt = new Date(1700000000123L);
+
+        // write a Date with the tuple sink
+        CassandraTupleSink<Tuple2<String, Date>> sink =
+                new CassandraTupleSink<>(
+                        "INSERT INTO " + table + " (id, created_at) VALUES (?, ?)",
+                        cassandraTestEnvironment.getBuilderForWriting());
+        try {
+            sink.open(new Configuration());
+            sink.send(Tuple2.of("id1", createdAt));
+        } finally {
+            sink.close();
+        }
+
+        ResultSet rs =
+                cassandraTestEnvironment.executeRequestWithTimeout("SELECT * FROM " + table + ";");
+        assertThat(rs.one().getInstant("created_at")).isEqualTo(createdAt.toInstant());
+
+        // read it back into the Date property of a POJO
+        final CassandraPojoInputFormat<DatePojo> source =
+                new CassandraPojoInputFormat<>(
+                        "SELECT * FROM " + table + ";",
+                        cassandraTestEnvironment.getBuilderForReading(),
+                        DatePojo.class);
+        try {
+            source.configure(new Configuration());
+            source.open(null);
+            assertThat(source.reachedEnd()).isFalse();
+            final DatePojo pojo = source.nextRecord(null);
+            assertThat(pojo.getId()).isEqualTo("id1");
+            assertThat(pojo.getCreatedAt()).isEqualTo(createdAt);
+            assertThat(source.reachedEnd()).isTrue();
+        } finally {
+            source.close();
+        }
+    }
+
+    /** POJO with a {@link Date} property mapped to a timestamp column. */
+    @Entity
+    public static class DatePojo {
+        private String id;
+        private Date createdAt;
+
+        public String getId() {
+            return id;
+        }
+
+        public void setId(String id) {
+            this.id = id;
+        }
+
+        public Date getCreatedAt() {
+            return createdAt;
+        }
+
+        public void setCreatedAt(Date createdAt) {
+            this.createdAt = createdAt;
+        }
     }
 
     @Test
@@ -574,8 +607,8 @@ class CassandraConnectorITCase
 
         // validate that all input was correctly written to Cassandra
         List<Row> input = new ArrayList<>(rowCollection);
-        List<com.datastax.driver.core.Row> output = rs.all();
-        for (com.datastax.driver.core.Row o : output) {
+        List<com.datastax.oss.driver.api.core.cql.Row> output = rs.all();
+        for (com.datastax.oss.driver.api.core.cql.Row o : output) {
             Row cmp = new Row(3);
             cmp.setField(0, o.getString(0));
             cmp.setField(1, o.getInt(2));
@@ -679,7 +712,7 @@ class CassandraConnectorITCase
         ResultSet rs =
                 cassandraTestEnvironment.executeRequestWithTimeout(
                         injectTableName(SELECT_DATA_QUERY));
-        List<com.datastax.driver.core.Row> rows = rs.all();
+        List<com.datastax.oss.driver.api.core.cql.Row> rows = rs.all();
         assertThat(rows).hasSameSizeAs(rowCollection);
     }
 
@@ -736,10 +769,10 @@ class CassandraConnectorITCase
         ResultSet rs =
                 cassandraTestEnvironment.executeRequestWithTimeout(
                         injectTableName(SELECT_DATA_QUERY));
-        List<com.datastax.driver.core.Row> rows = rs.all();
+        List<com.datastax.oss.driver.api.core.cql.Row> rows = rs.all();
         assertThat(rows).hasSameSizeAs(scalaTupleCollection);
 
-        for (com.datastax.driver.core.Row row : rows) {
+        for (com.datastax.oss.driver.api.core.cql.Row row : rows) {
             scalaTupleCollection.remove(
                     new scala.Tuple3<>(
                             row.getString(TUPLE_ID_FIELD),
@@ -780,10 +813,10 @@ class CassandraConnectorITCase
         ResultSet rs =
                 cassandraTestEnvironment.executeRequestWithTimeout(
                         injectTableName(SELECT_DATA_QUERY));
-        List<com.datastax.driver.core.Row> rows = rs.all();
+        List<com.datastax.oss.driver.api.core.cql.Row> rows = rs.all();
         assertThat(rows).hasSize(1);
         // Since nulls are ignored, we should be reading one complete record
-        for (com.datastax.driver.core.Row row : rows) {
+        for (com.datastax.oss.driver.api.core.cql.Row row : rows) {
             assertThat(
                             new scala.Tuple3<>(
                                     row.getString(TUPLE_ID_FIELD),

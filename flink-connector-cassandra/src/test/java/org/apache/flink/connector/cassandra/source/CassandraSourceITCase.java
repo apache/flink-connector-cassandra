@@ -18,11 +18,15 @@
 
 package org.apache.flink.connector.cassandra.source;
 
+import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
+import org.apache.flink.connector.base.source.reader.splitreader.SplitsAddition;
 import org.apache.flink.connector.cassandra.CassandraTestEnvironment;
 import org.apache.flink.connector.cassandra.source.enumerator.CassandraEnumeratorState;
+import org.apache.flink.connector.cassandra.source.reader.CassandraRow;
 import org.apache.flink.connector.cassandra.source.reader.CassandraSplitReader;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 import org.apache.flink.connector.cassandra.source.split.SplitsGenerator;
+import org.apache.flink.connector.cassandra.source.utils.CassandraUtils;
 import org.apache.flink.connector.cassandra.source.utils.QueryValidator;
 import org.apache.flink.connector.testframe.environment.ClusterControllable;
 import org.apache.flink.connector.testframe.environment.MiniClusterTestEnvironment;
@@ -43,6 +47,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestTemplate;
 
+import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -253,6 +258,48 @@ class CassandraSourceITCase extends SourceTestSuiteBase<Pojo> {
         assertThat(outputQuery)
                 .isEqualTo(
                         "SELECT field FROM keyspace.table WHERE (token(field) >= ?) AND (token(field) < ?) AND field = value LIMIT(1000);");
+    }
+
+    @Test
+    public void testReadTableWithCompositePartitionKey() throws Exception {
+        final String table = "compositepartitionkey";
+        // the columns of the partition key are not declared in the alphabetical order
+        cassandraTestEnvironment.executeRequestWithTimeout(
+                String.format(
+                        "CREATE TABLE %s.%s (z_key int, a_key int, val int, PRIMARY KEY ((z_key, a_key)));",
+                        KEYSPACE, table));
+        final int nbRecords = 50;
+        for (int i = 0; i < nbRecords; i++) {
+            cassandraTestEnvironment.executeRequestWithTimeout(
+                    String.format(
+                            "INSERT INTO %s.%s (z_key, a_key, val) VALUES (%d, %d, %d)",
+                            KEYSPACE, table, i, nbRecords - i, i));
+        }
+
+        final String partitionKey =
+                CassandraUtils.getPartitionKeyString(
+                        KEYSPACE, table, cassandraTestEnvironment.getSession().getMetadata());
+        assertThat(partitionKey).isEqualTo("z_key,a_key");
+
+        final CassandraSplitReader splitReader =
+                new CassandraSplitReader(
+                        cassandraTestEnvironment.getSession(),
+                        String.format("SELECT * FROM %s.%s;", KEYSPACE, table),
+                        partitionKey);
+        final CassandraSplit split =
+                new CassandraSplit(
+                        BigInteger.valueOf(Long.MIN_VALUE), BigInteger.valueOf(Long.MAX_VALUE));
+        splitReader.handleSplitsChanges(new SplitsAddition<>(Collections.singletonList(split)));
+
+        final RecordsWithSplitIds<CassandraRow> records = splitReader.fetch();
+
+        assertThat(records.finishedSplits()).containsExactly(split.splitId());
+        assertThat(records.nextSplit()).isEqualTo(split.splitId());
+        int nbReadRecords = 0;
+        while (records.nextRecordFromSplit() != null) {
+            nbReadRecords++;
+        }
+        assertThat(nbReadRecords).isEqualTo(nbRecords);
     }
 
     @Test

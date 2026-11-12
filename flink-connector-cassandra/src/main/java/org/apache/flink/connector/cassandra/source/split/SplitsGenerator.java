@@ -21,9 +21,10 @@ package org.apache.flink.connector.cassandra.source.split;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.connector.cassandra.source.enumerator.CassandraEnumeratorState;
 
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.Row;
-import com.datastax.driver.core.Session;
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.cql.ResultSet;
+import com.datastax.oss.driver.api.core.cql.Row;
+import com.datastax.oss.driver.api.core.cql.SimpleStatement;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,7 +45,7 @@ public final class SplitsGenerator {
     private static final Logger LOG = LoggerFactory.getLogger(SplitsGenerator.class);
 
     private final CassandraPartitioner partitioner;
-    private final Session session;
+    private final CqlSession session;
     private final String keyspace;
     private final String table;
     private final int parallelism;
@@ -53,7 +54,7 @@ public final class SplitsGenerator {
 
     public SplitsGenerator(
             CassandraPartitioner partitioner,
-            Session session,
+            CqlSession session,
             String keyspace,
             String table,
             int parallelism,
@@ -158,10 +159,11 @@ public final class SplitsGenerator {
     private List<TokenRange> getTokenRangesOfTable() {
         ResultSet resultSet =
                 session.execute(
-                        "SELECT range_start, range_end, partitions_count, mean_partition_size FROM "
-                                + "system.size_estimates WHERE keyspace_name = ? AND table_name = ?",
-                        keyspace,
-                        table);
+                        SimpleStatement.newInstance(
+                                "SELECT range_start, range_end, partitions_count, mean_partition_size FROM "
+                                        + "system.size_estimates WHERE keyspace_name = ? AND table_name = ?",
+                                keyspace,
+                                table));
 
         ArrayList<TokenRange> tokenRanges = new ArrayList<>();
         for (Row row : resultSet) {

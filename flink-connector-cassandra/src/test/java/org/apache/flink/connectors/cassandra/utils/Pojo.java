@@ -17,25 +17,26 @@
 
 package org.apache.flink.connectors.cassandra.utils;
 
-import com.datastax.driver.mapping.annotations.Column;
-import com.datastax.driver.mapping.annotations.Table;
+import com.datastax.oss.driver.api.mapper.annotations.CqlName;
+import com.datastax.oss.driver.api.mapper.annotations.Entity;
 
 import java.io.Serializable;
 import java.util.Objects;
 
-/** Test Pojo with DataStax annotations used. */
-@Table(keyspace = "flink", name = "batches")
+/** Test Pojo with Cassandra Java driver mapper annotations used. */
+@Entity(defaultKeyspace = "flink")
+@CqlName("batches")
 public class Pojo implements Serializable {
 
     private static final long serialVersionUID = 1038054554690916991L;
 
-    @Column(name = "id")
+    @CqlName("id")
     private String id;
 
-    @Column(name = "counter")
+    @CqlName("counter")
     private int counter;
 
-    @Column(name = "batch_id")
+    @CqlName("batch_id")
     private int batchID;
 
     // required for deserialization

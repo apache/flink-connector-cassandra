@@ -22,8 +22,8 @@ import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.connector.cassandra.source.reader.converter.CassandraRowToPojoConverter;
 import org.apache.flink.connector.cassandra.source.reader.converter.CassandraRowToRowDataConverter;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
-import org.apache.flink.streaming.connectors.cassandra.MapperOptions;
+import org.apache.flink.streaming.connectors.cassandra.CassandraMapperOptions;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.types.logical.RowType;
 
@@ -38,40 +38,30 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * <h4>POJO Source (DataStream API):</h4>
  *
  * <pre>{@code
- * // See CassandraSource class documentation for ClusterBuilder creation examples
- * ClusterBuilder clusterBuilder = ...; // your ClusterBuilder implementation
+ * // See CassandraSource class documentation for CassandraSessionBuilder creation examples
+ * CassandraSessionBuilder sessionBuilder = ...; // your CassandraSessionBuilder implementation
  *
  * CassandraSource<MyPojo> source = CassandraSource.builder()
- *     .setClusterBuilder(clusterBuilder)
+ *     .setSessionBuilder(sessionBuilder)
  *     .setQuery("SELECT * FROM my_keyspace.my_table")
- *     .setMapperOptions(() -> new Mapper.Option[] {Mapper.Option.saveNullFields(true)})
  *     .setMaxSplitMemorySize(MemorySize.ofMebiBytes(32))
  *     .buildForPojo(MyPojo.class);
  * }</pre>
  *
  * <h3>Consistency Level Configuration:</h3>
  *
- * <p><strong>ClusterBuilder (recommended):</strong> Set consistency level for ALL queries executed
- * by this source. See {@link CassandraSource} class documentation for complete ClusterBuilder
- * examples.
- *
- * <p><strong>MapperOptions (POJO only):</strong> Set consistency level only for POJO mapping
- * operations:
- *
- * <pre>{@code
- * .setMapperOptions(() -> new Mapper.Option[] {
- *     Mapper.Option.consistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
- * })
- * }</pre>
+ * <p>Set the consistency level in the driver configuration of the {@link CassandraSessionBuilder},
+ * it applies to all the queries executed by this source. See {@link CassandraSource} class
+ * documentation for complete CassandraSessionBuilder examples.
  *
  * <h4>RowData Source (Table API - typically used internally):</h4>
  *
  * <pre>{@code
- * // See CassandraSource class documentation for ClusterBuilder creation examples
- * ClusterBuilder clusterBuilder = ...; // your ClusterBuilder implementation
+ * // See CassandraSource class documentation for CassandraSessionBuilder creation examples
+ * CassandraSessionBuilder sessionBuilder = ...; // your CassandraSessionBuilder implementation
  *
  * CassandraSource<RowData> source = CassandraSource.builder()
- *     .setClusterBuilder(clusterBuilder)
+ *     .setSessionBuilder(sessionBuilder)
  *     .setQuery("SELECT * FROM my_keyspace.my_table")
  *     .buildForRowData(rowType);
  * }</pre>
@@ -79,21 +69,21 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 @PublicEvolving
 public final class CassandraSourceBuilder {
 
-    private ClusterBuilder clusterBuilder;
+    private CassandraSessionBuilder sessionBuilder;
     private String query;
     private long maxSplitMemorySize = CassandraSource.MAX_SPLIT_MEMORY_SIZE_DEFAULT;
-    private MapperOptions mapperOptions;
+    private CassandraMapperOptions mapperOptions;
 
     CassandraSourceBuilder() {}
 
     /**
      * Sets the cluster builder for connecting to Cassandra cluster.
      *
-     * @param clusterBuilder the cluster builder configuration
+     * @param sessionBuilder the cluster builder configuration
      * @return this builder instance
      */
-    public CassandraSourceBuilder setClusterBuilder(ClusterBuilder clusterBuilder) {
-        this.clusterBuilder = clusterBuilder;
+    public CassandraSourceBuilder setSessionBuilder(CassandraSessionBuilder sessionBuilder) {
+        this.sessionBuilder = sessionBuilder;
         return this;
     }
 
@@ -127,21 +117,22 @@ public final class CassandraSourceBuilder {
     /**
      * Sets mapper options for POJO mapping configuration.
      *
-     * <p>Optional. If not set, default mapper options will be used.
+     * <p>Optional. The mapper options only configure how POJOs are written, they have no effect on
+     * this source.
      *
-     * @param mapperOptions the mapper options for DataStax object mapper
+     * @param mapperOptions the mapper options
      * @return this builder instance
      */
-    public CassandraSourceBuilder setMapperOptions(MapperOptions mapperOptions) {
+    public CassandraSourceBuilder setMapperOptions(CassandraMapperOptions mapperOptions) {
         this.mapperOptions = mapperOptions;
         return this;
     }
 
     /**
-     * Builds a {@link CassandraSource} configured for POJO output using DataStax object mapper.
+     * Builds a {@link CassandraSource} configured for POJO output.
      *
-     * <p>The POJO class must be annotated with DataStax mapping annotations (e.g., {@code @Table},
-     * {@code @Column}).
+     * <p>The POJO class must be annotated with the Cassandra Java driver mapper annotations (e.g.,
+     * {@code @Entity}, {@code @CqlName}).
      *
      * @param <T> the POJO type
      * @param pojoClass the POJO class to map rows to
@@ -152,15 +143,9 @@ public final class CassandraSourceBuilder {
         validateCommonParameters();
         checkNotNull(pojoClass, "POJO class is required");
 
-        MapperOptions options =
-                mapperOptions != null
-                        ? mapperOptions
-                        : () -> new com.datastax.driver.mapping.Mapper.Option[0];
+        CassandraRowToPojoConverter<T> converter = new CassandraRowToPojoConverter<>(pojoClass);
 
-        CassandraRowToPojoConverter<T> converter =
-                new CassandraRowToPojoConverter<>(pojoClass, options, clusterBuilder);
-
-        return new CassandraSource<>(clusterBuilder, maxSplitMemorySize, converter, query);
+        return new CassandraSource<>(sessionBuilder, maxSplitMemorySize, converter, query);
     }
 
     /**
@@ -178,11 +163,11 @@ public final class CassandraSourceBuilder {
 
         CassandraRowToRowDataConverter converter = new CassandraRowToRowDataConverter(rowType);
 
-        return new CassandraSource<>(clusterBuilder, maxSplitMemorySize, converter, query);
+        return new CassandraSource<>(sessionBuilder, maxSplitMemorySize, converter, query);
     }
 
     private void validateCommonParameters() {
-        checkNotNull(clusterBuilder, "ClusterBuilder is required");
+        checkNotNull(sessionBuilder, "CassandraSessionBuilder is required");
         checkNotNull(query, "Query is required");
 
         if (maxSplitMemorySize < CassandraSource.MIN_SPLIT_MEMORY_SIZE) {

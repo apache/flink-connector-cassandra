@@ -21,29 +21,24 @@ package org.apache.flink.connector.cassandra.source.reader;
 import org.apache.flink.api.connector.source.SourceReaderContext;
 import org.apache.flink.connector.cassandra.source.reader.converter.CassandraRowToTypeConverter;
 import org.apache.flink.connector.cassandra.source.utils.CassandraUtils;
-import org.apache.flink.streaming.connectors.cassandra.ClusterBuilder;
+import org.apache.flink.streaming.connectors.cassandra.CassandraSessionBuilder;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.Session;
+import com.datastax.oss.driver.api.core.CqlSession;
 
-/**
- * Factory to create {@link CassandraSourceReader}s and allow sharing the cluster and the session
- * objects.
- */
+/** Factory to create {@link CassandraSourceReader}s and allow sharing the session object. */
 public class CassandraSourceReaderFactory<OUT> {
 
     public CassandraSourceReader<OUT> create(
             SourceReaderContext context,
-            ClusterBuilder clusterBuilder,
+            CassandraSessionBuilder sessionBuilder,
             CassandraRowToTypeConverter<OUT> rowToTypeConverter,
             String query,
             String keyspace,
             String table) {
-        Cluster cluster = clusterBuilder.getCluster();
-        Session session = cluster.connect();
+        CqlSession session = sessionBuilder.getSession();
         final String partitionKey =
-                CassandraUtils.getPartitionKeyString(keyspace, table, cluster.getMetadata());
+                CassandraUtils.getPartitionKeyString(keyspace, table, session.getMetadata());
         return new CassandraSourceReader<>(
-                context, query, partitionKey, cluster, session, rowToTypeConverter);
+                context, query, partitionKey, session, rowToTypeConverter);
     }
 }

@@ -19,24 +19,25 @@ package org.apache.flink.streaming.connectors.cassandra;
 
 import org.apache.flink.configuration.Configuration;
 
-import com.datastax.driver.core.BoundStatement;
-import com.datastax.driver.core.PreparedStatement;
-import com.datastax.driver.core.ResultSet;
-import com.google.common.util.concurrent.ListenableFuture;
+import com.datastax.oss.driver.api.core.cql.AsyncResultSet;
+import com.datastax.oss.driver.api.core.cql.BoundStatement;
+import com.datastax.oss.driver.api.core.cql.PreparedStatement;
+
+import java.util.concurrent.CompletionStage;
 
 /**
  * Abstract sink to write tuple-like values into a Cassandra cluster.
  *
  * @param <IN> Type of the elements emitted by this sink
  */
-public abstract class AbstractCassandraTupleSink<IN> extends CassandraSinkBase<IN, ResultSet> {
+public abstract class AbstractCassandraTupleSink<IN> extends CassandraSinkBase<IN, AsyncResultSet> {
     private final String insertQuery;
     private transient PreparedStatement ps;
     private final boolean ignoreNullFields;
 
     public AbstractCassandraTupleSink(
             String insertQuery,
-            ClusterBuilder builder,
+            CassandraSessionBuilder builder,
             CassandraSinkBaseConfig config,
             CassandraFailureHandler failureHandler) {
         super(builder, config, failureHandler);
@@ -51,7 +52,7 @@ public abstract class AbstractCassandraTupleSink<IN> extends CassandraSinkBase<I
     }
 
     @Override
-    public ListenableFuture<ResultSet> send(IN value) {
+    public CompletionStage<AsyncResultSet> send(IN value) {
         Object[] fields = extract(value);
         return session.executeAsync(bind(fields));
     }
@@ -61,7 +62,7 @@ public abstract class AbstractCassandraTupleSink<IN> extends CassandraSinkBase<I
         if (ignoreNullFields) {
             for (int i = 0; i < fields.length; i++) {
                 if (fields[i] == null) {
-                    bs.unset(i);
+                    bs = bs.unset(i);
                 }
             }
         }

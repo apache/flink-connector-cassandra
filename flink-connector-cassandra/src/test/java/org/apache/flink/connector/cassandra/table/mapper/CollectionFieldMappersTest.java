@@ -24,9 +24,9 @@ import org.apache.flink.table.data.GenericArrayData;
 import org.apache.flink.table.data.GenericMapData;
 import org.apache.flink.table.data.GenericRowData;
 
-import com.datastax.driver.core.Row;
-import com.datastax.driver.core.TupleValue;
-import com.datastax.driver.core.UDTValue;
+import com.datastax.oss.driver.api.core.cql.Row;
+import com.datastax.oss.driver.api.core.data.TupleValue;
+import com.datastax.oss.driver.api.core.data.UdtValue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
@@ -49,7 +49,7 @@ class CollectionFieldMappersTest {
 
     @Mock private Row mockRow;
     @Mock private TupleValue mockTupleValue;
-    @Mock private UDTValue mockUDTValue;
+    @Mock private UdtValue mockUDTValue;
     @Mock private CassandraFieldMapper mockElementMapper;
     @Mock private CassandraFieldMapper mockKeyMapper;
     @Mock private CassandraFieldMapper mockValueMapper;
@@ -381,16 +381,16 @@ class CollectionFieldMappersTest {
         CollectionFieldMappers.RowMapper mapper =
                 new CollectionFieldMappers.RowMapper(fieldMappers, fieldNames);
 
-        // Test with non-UDTValue/TupleValue input (String instead of structured type)
+        // Test with non-UdtValue/TupleValue input (String instead of structured type)
         assertThatThrownBy(() -> mapper.convertValueToFlinkType("not_a_row"))
                 .isInstanceOf(ValidationException.class)
-                .hasMessageContaining("Expected UDTValue or TupleValue, got:");
+                .hasMessageContaining("Expected UdtValue or TupleValue, got:");
 
         // Test with List instead of structured type
         List<Object> listType = Arrays.asList("value1", "value2");
         assertThatThrownBy(() -> mapper.convertValueToFlinkType(listType))
                 .isInstanceOf(ValidationException.class)
-                .hasMessageContaining("Expected UDTValue or TupleValue, got:");
+                .hasMessageContaining("Expected UdtValue or TupleValue, got:");
 
         // Test with Map instead of structured type
         Map<String, Object> mapType = new HashMap<>();
@@ -398,6 +398,6 @@ class CollectionFieldMappersTest {
         mapType.put("age", 30);
         assertThatThrownBy(() -> mapper.convertValueToFlinkType(mapType))
                 .isInstanceOf(ValidationException.class)
-                .hasMessageContaining("Expected UDTValue or TupleValue, got:");
+                .hasMessageContaining("Expected UdtValue or TupleValue, got:");
     }
 }

@@ -22,8 +22,7 @@ import org.apache.flink.api.connector.source.SourceOutput;
 import org.apache.flink.connector.cassandra.source.reader.converter.CassandraRowToTypeConverter;
 import org.apache.flink.connector.cassandra.source.split.CassandraSplit;
 
-import com.datastax.driver.core.ExecutionInfo;
-import com.datastax.driver.core.Row;
+import com.datastax.oss.driver.api.core.cql.Row;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
@@ -44,7 +43,6 @@ class CassandraRowEmitterTest {
     @Mock private SourceOutput<String> mockOutput;
     @Mock private CassandraSplit mockSplit;
     @Mock private Row mockRow;
-    @Mock private ExecutionInfo mockExecutionInfo;
 
     private CassandraRowEmitter<String> emitter;
     private CassandraRow cassandraRow;
@@ -53,7 +51,7 @@ class CassandraRowEmitterTest {
     void setUp() {
         MockitoAnnotations.openMocks(this);
         emitter = new CassandraRowEmitter<>(mockConverter);
-        cassandraRow = new CassandraRow(mockRow, mockExecutionInfo);
+        cassandraRow = new CassandraRow(mockRow);
     }
 
     @Test

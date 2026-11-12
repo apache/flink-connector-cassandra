@@ -42,7 +42,7 @@ import org.apache.flink.table.types.logical.TinyIntType;
 import org.apache.flink.table.types.logical.VarBinaryType;
 import org.apache.flink.table.types.logical.VarCharType;
 
-import com.datastax.driver.core.UDTValue;
+import com.datastax.oss.driver.api.core.data.UdtValue;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -260,8 +260,8 @@ class CassandraFieldMapperFactoryTest {
         // Test that nested row creation works correctly by testing conversion
         // Create mock UDT data that would exercise the nested row mappers
         // The fact that this doesn't throw an exception means the inner mappers exist
-        UDTValue mockUDT = mock(UDTValue.class);
-        UDTValue innerMockUDT = mock(UDTValue.class);
+        UdtValue mockUDT = mock(UdtValue.class);
+        UdtValue innerMockUDT = mock(UdtValue.class);
 
         // Mock the nested UDT structure
         when(mockUDT.isNull("id")).thenReturn(false);
@@ -399,7 +399,7 @@ class CassandraFieldMapperFactoryTest {
                         CassandraFieldMapperFactory.createFieldMapper(rowType);
         assertThat(rowMapper).isNotNull();
         // Create a mock UDT to test that all field mappers work
-        UDTValue mockUDT = mock(UDTValue.class);
+        UdtValue mockUDT = mock(UdtValue.class);
         when(mockUDT.isNull("id")).thenReturn(false);
         when(mockUDT.getObject("id")).thenReturn(123);
         when(mockUDT.isNull("name")).thenReturn(false);

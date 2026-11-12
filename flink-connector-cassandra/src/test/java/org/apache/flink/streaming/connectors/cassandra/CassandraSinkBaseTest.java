@@ -18,7 +18,6 @@
 package org.apache.flink.streaming.connectors.cassandra;
 
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.connectors.cassandra.utils.ResultSetFutures;
 import org.apache.flink.core.testutils.CheckedThread;
 import org.apache.flink.streaming.api.operators.StreamSink;
 import org.apache.flink.streaming.util.OneInputStreamOperatorTestHarness;
@@ -26,19 +25,20 @@ import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.concurrent.FutureUtils;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.Session;
-import com.datastax.driver.core.exceptions.NoHostAvailableException;
-import com.google.common.util.concurrent.ListenableFuture;
+import com.datastax.oss.driver.api.core.AllNodesFailedException;
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.CqlSessionBuilder;
+import com.datastax.oss.driver.api.core.cql.AsyncResultSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.LinkedList;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -48,7 +48,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.fail;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /** Tests for the {@link CassandraSinkBase}. */
 class CassandraSinkBaseTest {
@@ -59,22 +58,25 @@ class CassandraSinkBaseTest {
     void testHostNotFoundErrorHandling() throws Exception {
         CassandraSinkBase base =
                 new CassandraSinkBase(
-                        new ClusterBuilder() {
+                        new CassandraSessionBuilder() {
                             @Override
-                            protected Cluster buildCluster(Cluster.Builder builder) {
-                                return builder.addContactPoint("127.0.0.1").build();
+                            protected CqlSession buildSession(CqlSessionBuilder builder) {
+                                return builder.addContactPoint(
+                                                new InetSocketAddress("127.0.0.1", 9042))
+                                        .withLocalDatacenter("datacenter1")
+                                        .build();
                             }
                         },
                         CassandraSinkBaseConfig.newBuilder().build(),
                         new NoOpCassandraFailureHandler()) {
                     @Override
-                    public ListenableFuture send(Object value) {
+                    public CompletionStage send(Object value) {
                         return null;
                     }
                 };
 
         assertThatThrownBy(() -> base.open(new Configuration()))
-                .isInstanceOf(NoHostAvailableException.class);
+                .isInstanceOf(AllNodesFailedException.class);
     }
 
     @Test
@@ -171,7 +173,7 @@ class CassandraSinkBaseTest {
 
         try (OneInputStreamOperatorTestHarness<String, Object> testHarness =
                 createOpenedTestHarness(casSinkFunc)) {
-            CompletableFuture<ResultSet> completableFuture = new CompletableFuture<>();
+            CompletableFuture<AsyncResultSet> completableFuture = new CompletableFuture<>();
             casSinkFunc.enqueueCompletableFuture(completableFuture);
 
             casSinkFunc.invoke("hello");
@@ -206,7 +208,7 @@ class CassandraSinkBaseTest {
         try (OneInputStreamOperatorTestHarness<String, Object> testHarness =
                 createOpenedTestHarness(casSinkFunc)) {
 
-            CompletableFuture<ResultSet> completableFuture = new CompletableFuture<>();
+            CompletableFuture<AsyncResultSet> completableFuture = new CompletableFuture<>();
             casSinkFunc.enqueueCompletableFuture(completableFuture);
 
             casSinkFunc.invoke("hello");
@@ -243,7 +245,7 @@ class CassandraSinkBaseTest {
             assertThat(testCassandraSink.getAvailablePermits()).isOne();
             assertThat(testCassandraSink.getAcquiredPermits()).isZero();
 
-            CompletableFuture<ResultSet> completableFuture = new CompletableFuture<>();
+            CompletableFuture<AsyncResultSet> completableFuture = new CompletableFuture<>();
             testCassandraSink.enqueueCompletableFuture(completableFuture);
             testCassandraSink.invoke("N/A");
 
@@ -269,7 +271,7 @@ class CassandraSinkBaseTest {
             assertThat(testCassandraSink.getAvailablePermits()).isOne();
             assertThat(testCassandraSink.getAcquiredPermits()).isZero();
 
-            CompletableFuture<ResultSet> completableFuture = new CompletableFuture<>();
+            CompletableFuture<AsyncResultSet> completableFuture = new CompletableFuture<>();
             testCassandraSink.enqueueCompletableFuture(completableFuture);
             testCassandraSink.invoke("N/A");
 
@@ -289,7 +291,7 @@ class CassandraSinkBaseTest {
         final CassandraSinkBaseConfig config =
                 CassandraSinkBaseConfig.newBuilder().setMaxConcurrentRequests(1).build();
 
-        Function<String, ListenableFuture<ResultSet>> failingSendFunction =
+        Function<String, CompletionStage<AsyncResultSet>> failingSendFunction =
                 ignoredMessage -> {
                     throwCheckedAsUnchecked(new Throwable("expected"));
                     //noinspection ReturnOfNull
@@ -323,7 +325,7 @@ class CassandraSinkBaseTest {
                         .build();
 
         try (TestCassandraSink testCassandraSink = createOpenedTestCassandraSink(config)) {
-            CompletableFuture<ResultSet> completableFuture = new CompletableFuture<>();
+            CompletableFuture<AsyncResultSet> completableFuture = new CompletableFuture<>();
             testCassandraSink.enqueueCompletableFuture(completableFuture);
             testCassandraSink.enqueueCompletableFuture(completableFuture);
             testCassandraSink.invoke("Invoke #1");
@@ -379,29 +381,25 @@ class CassandraSinkBaseTest {
         throw (T) ex;
     }
 
-    private static class TestCassandraSink extends CassandraSinkBase<String, ResultSet>
+    private static class TestCassandraSink extends CassandraSinkBase<String, AsyncResultSet>
             implements AutoCloseable {
 
-        private static final ClusterBuilder builder;
-        private static final Cluster cluster;
-        private static final Session session;
+        private static final CassandraSessionBuilder builder;
+        private static final CqlSession session;
 
         static {
-            cluster = mock(Cluster.class);
-
-            session = mock(Session.class);
-            when(cluster.connect()).thenReturn(session);
+            session = mock(CqlSession.class);
 
             builder =
-                    new ClusterBuilder() {
+                    new CassandraSessionBuilder() {
                         @Override
-                        protected Cluster buildCluster(Cluster.Builder builder) {
-                            return cluster;
+                        protected CqlSession buildSession(CqlSessionBuilder builder) {
+                            return session;
                         }
                     };
         }
 
-        private final Queue<ListenableFuture<ResultSet>> resultSetFutures = new LinkedList<>();
+        private final Queue<CompletionStage<AsyncResultSet>> resultSetFutures = new LinkedList<>();
 
         TestCassandraSink() {
             this(CassandraSinkBaseConfig.newBuilder().build());
@@ -420,30 +418,30 @@ class CassandraSinkBaseTest {
         }
 
         @Override
-        public ListenableFuture<ResultSet> send(String value) {
+        public CompletionStage<AsyncResultSet> send(String value) {
             return resultSetFutures.poll();
         }
 
-        void enqueueCompletableFuture(CompletableFuture<ResultSet> completableFuture) {
+        void enqueueCompletableFuture(CompletableFuture<AsyncResultSet> completableFuture) {
             Preconditions.checkNotNull(completableFuture);
-            resultSetFutures.offer(ResultSetFutures.fromCompletableFuture(completableFuture));
+            resultSetFutures.offer(completableFuture);
         }
     }
 
     private static class MockCassandraSink extends TestCassandraSink {
         private static final long serialVersionUID = -3363195776692829911L;
 
-        private final Function<String, ListenableFuture<ResultSet>> sendFunction;
+        private final Function<String, CompletionStage<AsyncResultSet>> sendFunction;
 
         MockCassandraSink(
                 CassandraSinkBaseConfig config,
-                Function<String, ListenableFuture<ResultSet>> sendFunction) {
+                Function<String, CompletionStage<AsyncResultSet>> sendFunction) {
             super(config, new NoOpCassandraFailureHandler());
             this.sendFunction = sendFunction;
         }
 
         @Override
-        public ListenableFuture<ResultSet> send(String value) {
+        public CompletionStage<AsyncResultSet> send(String value) {
             return this.sendFunction.apply(value);
         }
     }
