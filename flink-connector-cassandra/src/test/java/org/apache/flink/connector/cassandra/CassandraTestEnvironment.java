@@ -54,7 +54,7 @@ import java.util.List;
 @Testcontainers
 public class CassandraTestEnvironment implements TestResource {
     private static final Logger LOG = LoggerFactory.getLogger(CassandraTestEnvironment.class);
-    private static final String DOCKER_CASSANDRA_IMAGE = "cassandra:4.1.9";
+    private static final String DOCKER_CASSANDRA_IMAGE = "cassandra:4.1.12";
     private static final int CQL_PORT = 9042;
 
     private static final int READ_TIMEOUT_MILLIS = 36000;
