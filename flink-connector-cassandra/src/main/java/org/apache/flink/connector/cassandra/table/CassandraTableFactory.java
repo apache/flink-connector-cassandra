@@ -27,6 +27,7 @@ import org.apache.flink.table.factories.DynamicTableSourceFactory;
 import org.apache.flink.table.factories.FactoryUtil;
 import org.apache.flink.table.types.DataType;
 
+import com.datastax.driver.core.Metadata;
 import com.datastax.driver.core.querybuilder.Select;
 
 import java.util.Collections;
@@ -130,6 +131,7 @@ public class CassandraTableFactory implements DynamicTableSourceFactory {
                 context.getCatalogTable().getResolvedSchema().getColumns().stream()
                         .filter(Column::isPhysical)
                         .map(Column::getName)
+                        .map(Metadata::quoteIfNecessary)
                         .collect(Collectors.toList());
 
         // Use QueryBuilder for proper CQL construction

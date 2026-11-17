@@ -21,21 +21,28 @@ package org.apache.flink.connector.cassandra.source.utils;
 import com.datastax.driver.core.ColumnMetadata;
 import com.datastax.driver.core.Metadata;
 
-import java.util.Set;
+import java.util.List;
 import java.util.stream.Collectors;
 
 /** Common utilities for Cassandra related tasks. */
 public class CassandraUtils {
 
+    /**
+     * Returns the partition key columns as a CQL list for {@code token(...)}: in partition key
+     * order, and quoted where the column names need it.
+     */
     public static String getPartitionKeyString(
             String keyspace, String table, Metadata clusterMetadata) {
-        return String.join(",", getPartitionKey(keyspace, table, clusterMetadata));
+        return getPartitionKey(keyspace, table, clusterMetadata).stream()
+                .map(Metadata::quoteIfNecessary)
+                .collect(Collectors.joining(","));
     }
 
-    public static Set<String> getPartitionKey(
+    /** Returns the partition key column names in partition key order. */
+    public static List<String> getPartitionKey(
             String keyspace, String table, Metadata clusterMetadata) {
         return clusterMetadata.getKeyspace(keyspace).getTable(table).getPartitionKey().stream()
                 .map(ColumnMetadata::getName)
-                .collect(Collectors.toSet());
+                .collect(Collectors.toList());
     }
 }
