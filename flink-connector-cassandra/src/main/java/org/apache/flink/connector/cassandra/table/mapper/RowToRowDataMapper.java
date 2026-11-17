@@ -23,6 +23,7 @@ import org.apache.flink.table.data.GenericRowData;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.types.logical.RowType;
 
+import com.datastax.driver.core.Metadata;
 import com.datastax.driver.core.Row;
 
 import java.io.Serializable;
@@ -41,7 +42,7 @@ public class RowToRowDataMapper implements Serializable {
 
     public RowToRowDataMapper(RowType rowType) {
         this.fieldCount = rowType.getFieldCount();
-        this.fieldNames = rowType.getFieldNames().toArray(new String[0]);
+        this.fieldNames = toColumnNames(rowType);
         this.fieldMappers = new CassandraFieldMapper[fieldCount];
 
         for (int i = 0; i < fieldCount; i++) {
@@ -52,7 +53,7 @@ public class RowToRowDataMapper implements Serializable {
 
     public RowToRowDataMapper(RowType rowType, CassandraFieldMapper[] fieldMappers) {
         this.fieldCount = rowType.getFieldCount();
-        this.fieldNames = rowType.getFieldNames().toArray(new String[0]);
+        this.fieldNames = toColumnNames(rowType);
         this.fieldMappers = fieldMappers;
 
         if (fieldMappers.length != fieldCount) {
@@ -61,6 +62,15 @@ public class RowToRowDataMapper implements Serializable {
                             "Field mappers count (%d) does not match row type field count (%d)",
                             fieldMappers.length, fieldCount));
         }
+    }
+
+    /**
+     * Quotes case-sensitive names, since {@link Row} getters treat unquoted names as lower case.
+     */
+    private static String[] toColumnNames(RowType rowType) {
+        return rowType.getFieldNames().stream()
+                .map(Metadata::quoteIfNecessary)
+                .toArray(String[]::new);
     }
 
     public RowData convert(Row row) {
