@@ -19,6 +19,7 @@
 package org.apache.flink.connector.cassandra.table;
 
 import org.apache.flink.connector.cassandra.CassandraTestEnvironment;
+import org.apache.flink.connector.cassandra.source.utils.CassandraUtils;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
@@ -1605,6 +1606,86 @@ class CassandraDynamicTableSourceITCase {
                             assertThat(row.getField(1)).isIn("Alice", "Bob");
                             assertThat(row.getField(2)).isIn(30, 25);
                         });
+    }
+
+    @Test
+    void testCompositePartitionKeyNotInAlphabeticalOrder() throws Exception {
+        cassandraTestEnvironment.executeRequestWithTimeout(
+                "CREATE TABLE IF NOT EXISTS "
+                        + CassandraTestEnvironment.KEYSPACE
+                        + ".pk_order_table (z_key int, a_key int, val int, PRIMARY KEY ((z_key, a_key)));");
+        for (int i = 0; i < 20; i++) {
+            cassandraTestEnvironment.executeRequestWithTimeout(
+                    String.format(
+                            "INSERT INTO %s.pk_order_table (z_key, a_key, val) VALUES (%d, %d, %d);",
+                            CassandraTestEnvironment.KEYSPACE, i, 20 - i, i));
+        }
+        tableEnv.executeSql(
+                createTableDdl(
+                        "flink_pk_order", "z_key INT, a_key INT, val INT", "pk_order_table"));
+        List<Row> actualRows =
+                collectResults(tableEnv.sqlQuery("SELECT val FROM flink_pk_order"), 20);
+
+        assertThat(actualRows)
+                .extracting(row -> (Integer) row.getField(0))
+                .containsExactlyInAnyOrder(
+                        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19);
+        assertThat(partitionKeyString("pk_order_table")).isEqualTo("z_key,a_key");
+    }
+
+    @Test
+    void testCaseSensitiveColumnNames() throws Exception {
+        cassandraTestEnvironment.executeRequestWithTimeout(
+                "CREATE TABLE IF NOT EXISTS "
+                        + CassandraTestEnvironment.KEYSPACE
+                        + ".pk_case_table (\"MyKey\" int PRIMARY KEY, \"MyValue\" text);");
+        cassandraTestEnvironment.executeRequestWithTimeout(
+                "INSERT INTO "
+                        + CassandraTestEnvironment.KEYSPACE
+                        + ".pk_case_table (\"MyKey\", \"MyValue\") VALUES (1, 'one');");
+        cassandraTestEnvironment.executeRequestWithTimeout(
+                "INSERT INTO "
+                        + CassandraTestEnvironment.KEYSPACE
+                        + ".pk_case_table (\"MyKey\", \"MyValue\") VALUES (2, 'two');");
+        tableEnv.executeSql(
+                createTableDdl("flink_pk_case", "MyKey INT, MyValue STRING", "pk_case_table"));
+        List<Row> actualRows = collectResults(tableEnv.sqlQuery("SELECT * FROM flink_pk_case"), 2);
+
+        assertThat(actualRows)
+                .extracting(row -> row.getField(0) + "=" + row.getField(1))
+                .containsExactlyInAnyOrder("1=one", "2=two");
+        assertThat(partitionKeyString("pk_case_table")).isEqualTo("\"MyKey\"");
+    }
+
+    private String partitionKeyString(String table) {
+        return CassandraUtils.getPartitionKeyString(
+                CassandraTestEnvironment.KEYSPACE,
+                table,
+                cassandraTestEnvironment.getSession().getCluster().getMetadata());
+    }
+
+    private String createTableDdl(String flinkTable, String columns, String cassandraTable) {
+        return "CREATE TABLE "
+                + flinkTable
+                + " ("
+                + columns
+                + ") WITH ("
+                + "  'connector' = 'cassandra',"
+                + "  'hosts' = '"
+                + cassandraTestEnvironment.getContactPoint()
+                + "',"
+                + "  'port' = '"
+                + cassandraTestEnvironment.getPort()
+                + "',"
+                + "  'keyspace' = '"
+                + CassandraTestEnvironment.KEYSPACE
+                + "',"
+                + "  'table' = '"
+                + cassandraTable
+                + "',"
+                + "  'username' = 'cassandra',"
+                + "  'password' = 'cassandra'"
+                + ")";
     }
 
     private List<Row> collectResults(Table table, int expectedCount) throws Exception {

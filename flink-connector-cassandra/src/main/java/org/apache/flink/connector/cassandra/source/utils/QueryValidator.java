@@ -28,6 +28,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -84,7 +85,7 @@ public class QueryValidator {
     @VisibleForTesting
     public boolean filtersOnPartitionKey(
             Set<String> filteringColumns, String keyspace, String table) {
-        final Set<String> partitionKeyColumns =
+        final List<String> partitionKeyColumns =
                 CassandraUtils.getPartitionKey(keyspace, table, clusterMetadata);
         return filteringColumns.containsAll(partitionKeyColumns);
     }
