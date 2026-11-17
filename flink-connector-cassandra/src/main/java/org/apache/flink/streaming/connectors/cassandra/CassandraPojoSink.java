@@ -17,7 +17,7 @@
 
 package org.apache.flink.streaming.connectors.cassandra;
 
-import org.apache.flink.configuration.Configuration;
+import org.apache.flink.api.common.functions.OpenContext;
 
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Session;
@@ -96,8 +96,8 @@ public class CassandraPojoSink<IN> extends CassandraSinkBase<IN, ResultSet> {
     }
 
     @Override
-    public void open(Configuration configuration) {
-        super.open(configuration);
+    public void open(OpenContext openContext) {
+        super.open(openContext);
         try {
             this.mappingManager = new MappingManager(session);
             this.mapper = mappingManager.mapper(clazz);

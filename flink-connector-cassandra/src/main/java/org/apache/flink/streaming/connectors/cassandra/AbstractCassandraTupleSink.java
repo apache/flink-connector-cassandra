@@ -17,7 +17,7 @@
 
 package org.apache.flink.streaming.connectors.cassandra;
 
-import org.apache.flink.configuration.Configuration;
+import org.apache.flink.api.common.functions.OpenContext;
 
 import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.PreparedStatement;
@@ -45,8 +45,8 @@ public abstract class AbstractCassandraTupleSink<IN> extends CassandraSinkBase<I
     }
 
     @Override
-    public void open(Configuration configuration) {
-        super.open(configuration);
+    public void open(OpenContext openContext) {
+        super.open(openContext);
         this.ps = session.prepare(insertQuery);
     }
 

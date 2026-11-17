@@ -35,7 +35,6 @@ import org.apache.flink.table.factories.DynamicTableFactory;
 import com.datastax.driver.core.Cluster;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -265,11 +264,14 @@ class CassandraTableFactoryTest {
         CassandraTableFactory factory = new CassandraTableFactory();
         ResolvedCatalogTable catalogTable =
                 new ResolvedCatalogTable(
-                        CatalogTable.of(
-                                Schema.newBuilder().fromResolvedSchema(BASIC_SCHEMA).build(),
-                                "Test table",
-                                new ArrayList<>(),
-                                options),
+                        CatalogTable.newBuilder()
+                                .schema(
+                                        Schema.newBuilder()
+                                                .fromResolvedSchema(BASIC_SCHEMA)
+                                                .build())
+                                .comment("Test table")
+                                .options(options)
+                                .build(),
                         BASIC_SCHEMA);
         DynamicTableFactory.Context context =
                 new DynamicTableFactory.Context() {

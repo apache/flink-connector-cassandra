@@ -17,7 +17,7 @@
 
 package org.apache.flink.streaming.connectors.cassandra;
 
-import org.apache.flink.configuration.Configuration;
+import org.apache.flink.api.common.functions.DefaultOpenContext;
 import org.apache.flink.connectors.cassandra.utils.ResultSetFutures;
 import org.apache.flink.core.testutils.CheckedThread;
 import org.apache.flink.streaming.api.operators.StreamSink;
@@ -73,7 +73,7 @@ class CassandraSinkBaseTest {
                     }
                 };
 
-        assertThatThrownBy(() -> base.open(new Configuration()))
+        assertThatThrownBy(() -> base.open(DefaultOpenContext.INSTANCE))
                 .isInstanceOf(NoHostAvailableException.class);
     }
 
@@ -99,7 +99,7 @@ class CassandraSinkBaseTest {
     void testThrowErrorOnClose() throws Exception {
         TestCassandraSink casSinkFunc = new TestCassandraSink();
 
-        casSinkFunc.open(new Configuration());
+        casSinkFunc.open(DefaultOpenContext.INSTANCE);
 
         Exception cause = new RuntimeException();
         casSinkFunc.enqueueCompletableFuture(FutureUtils.completedExceptionally(cause));
@@ -298,7 +298,7 @@ class CassandraSinkBaseTest {
 
         try (TestCassandraSink testCassandraSink =
                 new MockCassandraSink(config, failingSendFunction)) {
-            testCassandraSink.open(new Configuration());
+            testCassandraSink.open(DefaultOpenContext.INSTANCE);
             assertThat(testCassandraSink.getAvailablePermits()).isOne();
             assertThat(testCassandraSink.getAcquiredPermits()).isZero();
 
@@ -341,27 +341,27 @@ class CassandraSinkBaseTest {
 
     private TestCassandraSink createOpenedTestCassandraSink() {
         final TestCassandraSink testCassandraSink = new TestCassandraSink();
-        testCassandraSink.open(new Configuration());
+        testCassandraSink.open(DefaultOpenContext.INSTANCE);
         return testCassandraSink;
     }
 
     private TestCassandraSink createOpenedTestCassandraSink(
             CassandraFailureHandler failureHandler) {
         final TestCassandraSink testCassandraSink = new TestCassandraSink(failureHandler);
-        testCassandraSink.open(new Configuration());
+        testCassandraSink.open(DefaultOpenContext.INSTANCE);
         return testCassandraSink;
     }
 
     private TestCassandraSink createOpenedTestCassandraSink(CassandraSinkBaseConfig config) {
         final TestCassandraSink testCassandraSink = new TestCassandraSink(config);
-        testCassandraSink.open(new Configuration());
+        testCassandraSink.open(DefaultOpenContext.INSTANCE);
         return testCassandraSink;
     }
 
     private TestCassandraSink createOpenedTestCassandraSink(
             CassandraSinkBaseConfig config, CassandraFailureHandler failureHandler) {
         final TestCassandraSink testCassandraSink = new TestCassandraSink(config, failureHandler);
-        testCassandraSink.open(new Configuration());
+        testCassandraSink.open(DefaultOpenContext.INSTANCE);
         return testCassandraSink;
     }
 

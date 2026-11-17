@@ -19,13 +19,13 @@ package org.apache.flink.streaming.connectors.cassandra;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.api.common.functions.OpenContext;
 import org.apache.flink.api.common.io.SinkUtils;
 import org.apache.flink.api.java.ClosureCleaner;
-import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
-import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
+import org.apache.flink.streaming.api.functions.sink.legacy.RichSinkFunction;
 import org.apache.flink.util.Preconditions;
 
 import com.datastax.driver.core.Cluster;
@@ -86,7 +86,7 @@ public abstract class CassandraSinkBase<IN, V> extends RichSinkFunction<IN>
     }
 
     @Override
-    public void open(Configuration configuration) {
+    public void open(OpenContext openContext) {
         this.callback =
                 new FutureCallback<V>() {
                     @Override

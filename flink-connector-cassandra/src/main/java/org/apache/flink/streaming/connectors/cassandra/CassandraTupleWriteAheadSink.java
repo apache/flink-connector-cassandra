@@ -23,6 +23,7 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.ClosureCleaner;
 import org.apache.flink.api.java.tuple.Tuple;
 import org.apache.flink.api.java.typeutils.runtime.TupleSerializer;
+import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.streaming.runtime.operators.CheckpointCommitter;
 import org.apache.flink.streaming.runtime.operators.GenericWriteAheadSink;
 
@@ -73,7 +74,8 @@ public class CassandraTupleWriteAheadSink<IN extends Tuple> extends GenericWrite
 
     public void open() throws Exception {
         super.open();
-        if (!getRuntimeContext().isCheckpointingEnabled()) {
+        if (!CheckpointingOptions.isCheckpointingEnabled(
+                getRuntimeContext().getJobConfiguration())) {
             throw new IllegalStateException(
                     "The write-ahead log requires checkpointing to be enabled.");
         }
