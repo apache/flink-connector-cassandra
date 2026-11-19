@@ -22,6 +22,7 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.ClosureCleaner;
 import org.apache.flink.api.java.typeutils.runtime.RowSerializer;
+import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.streaming.runtime.operators.CheckpointCommitter;
 import org.apache.flink.streaming.runtime.operators.GenericWriteAheadSink;
 import org.apache.flink.types.Row;
@@ -72,7 +73,8 @@ public class CassandraRowWriteAheadSink extends GenericWriteAheadSink<Row> {
 
     public void open() throws Exception {
         super.open();
-        if (!getRuntimeContext().isCheckpointingEnabled()) {
+        if (!CheckpointingOptions.isCheckpointingEnabled(
+                getRuntimeContext().getJobConfiguration())) {
             throw new IllegalStateException(
                     "The write-ahead log requires checkpointing to be enabled.");
         }

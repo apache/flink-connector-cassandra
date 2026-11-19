@@ -162,7 +162,7 @@ CREATE TABLE IF NOT EXISTS example.wordcount (
 {{< /tabs >}}
 
 ### Cassandra Sink Example for Streaming Tuple Data Type
-While storing the result with Java/Scala Tuple data type to a Cassandra sink, it is required to set a CQL upsert statement (via setQuery('stmt')) to persist each record back to the database. With the upsert query cached as `PreparedStatement`, each Tuple element is converted to parameters of the statement.
+While storing the result with Java Tuple data type to a Cassandra sink, it is required to set a CQL upsert statement (via setQuery('stmt')) to persist each record back to the database. With the upsert query cached as `PreparedStatement`, each Tuple element is converted to parameters of the statement.
 
 For details about `PreparedStatement` and `BoundStatement`, please visit [DataStax Java Driver manual](https://docs.datastax.com/en/developer/java-driver/2.1/manual/statements/prepared/)
 
@@ -193,39 +193,13 @@ DataStream<Tuple2<String, Long>> result = text
             }
         })
         .keyBy(value -> value.f0)
-        .window(TumblingProcessingTimeWindows.of(Time.seconds(5)))
+        .window(TumblingProcessingTimeWindows.of(Duration.ofSeconds(5)))
         .sum(1);
 
 CassandraSink.addSink(result)
         .setQuery("INSERT INTO example.wordcount(word, count) values (?, ?);")
         .setHost("127.0.0.1")
         .build();
-```
-{{< /tab >}}
-{{< tab "Scala" >}}
-```scala
-val env: StreamExecutionEnvironment = StreamExecutionEnvironment.getExecutionEnvironment
-
-// get input data by connecting to the socket
-val text: DataStream[String] = env.socketTextStream(hostname, port, '\n')
-
-// parse the data, group it, window it, and aggregate the counts
-val result: DataStream[(String, Long)] = text
-  // split up the lines in pairs (2-tuples) containing: (word,1)
-  .flatMap(_.toLowerCase.split("\\s"))
-  .filter(_.nonEmpty)
-  .map((_, 1L))
-  // group by the tuple field "0" and sum up tuple field "1"
-  .keyBy(_._1)
-  .window(TumblingProcessingTimeWindows.of(Time.seconds(5)))
-  .sum(1)
-
-CassandraSink.addSink(result)
-  .setQuery("INSERT INTO example.wordcount(word, count) values (?, ?);")
-  .setHost("127.0.0.1")
-  .build()
-
-result.print().setParallelism(1)
 ```
 {{< /tab >}}
 {{< /tabs >}}
@@ -262,7 +236,7 @@ DataStream<WordCount> result = text
             }
         })
         .keyBy(WordCount::getWord)
-        .window(TumblingProcessingTimeWindows.of(Time.seconds(5)))
+        .window(TumblingProcessingTimeWindows.of(Duration.ofSeconds(5)))
 
         .reduce(new ReduceFunction<WordCount>() {
             @Override

@@ -18,9 +18,10 @@
 
 package org.apache.flink.streaming.connectors.cassandra;
 
-import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.api.common.serialization.SerializerConfigImpl;
 import org.apache.flink.api.java.tuple.Tuple0;
 import org.apache.flink.api.java.typeutils.TupleTypeInfo;
+import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.streaming.runtime.operators.CheckpointCommitter;
 import org.apache.flink.streaming.util.OneInputStreamOperatorTestHarness;
 
@@ -35,6 +36,7 @@ import org.mockito.ArgumentMatchers;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
+import java.time.Duration;
 import java.util.Collections;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -67,7 +69,7 @@ class CassandraTupleWriteAheadSinkTest {
                                     .thenReturn(boundStatement);
 
                             PreparedStatement preparedStatement = mock(PreparedStatement.class);
-                            when(preparedStatement.bind(ArgumentMatchers.any()))
+                            when(preparedStatement.bind(ArgumentMatchers.any(Object[].class)))
                                     .thenReturn(boundStatement);
 
                             ResultSetFuture future = mock(ResultSetFuture.class);
@@ -131,13 +133,15 @@ class CassandraTupleWriteAheadSinkTest {
         final CassandraTupleWriteAheadSink<Tuple0> sink =
                 new CassandraTupleWriteAheadSink<>(
                         "abc",
-                        TupleTypeInfo.of(Tuple0.class).createSerializer(new ExecutionConfig()),
+                        TupleTypeInfo.of(Tuple0.class).createSerializer(new SerializerConfigImpl()),
                         clusterBuilder,
                         cc);
 
         OneInputStreamOperatorTestHarness<Tuple0, Tuple0> harness =
                 new OneInputStreamOperatorTestHarness<>(sink);
-        harness.getEnvironment().getTaskConfiguration().setBoolean("checkpointing", true);
+        harness.getEnvironment()
+                .getJobConfiguration()
+                .set(CheckpointingOptions.CHECKPOINTING_INTERVAL, Duration.ofSeconds(1));
 
         harness.setup();
         sink.open();
